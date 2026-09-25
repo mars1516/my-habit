@@ -36,6 +36,13 @@ export function installDebug(game: Game, params: URLSearchParams) {
       }
       game.render();
     },
+    /** Advance the simulation without rendering (fast logic tests). */
+    sim(frames = 1, dt = 1 / 60) {
+      for (let i = 0; i < frames; i++) {
+        game.tick(dt);
+        ctx.input.endFrame();
+      }
+    },
     fps: () => game.fps,
     /** Point the camera so its centre ray passes through a world point. */
     aimAt(x: number, y: number, z: number) {

@@ -15,6 +15,12 @@ interface Updraft {
 
 export class World {
   private updrafts: Updraft[] = [];
+  private timers: { t: number; fn: () => void }[] = [];
+
+  /** Run `fn` after `sec` seconds of game time (pauses with the game, unlike setTimeout). */
+  after(sec: number, fn: () => void) {
+    this.timers.push({ t: sec, fn });
+  }
 
   raycastStatic(origin: THREE.Vector3, dir: THREE.Vector3, dist: number): RayHit | null {
     return physics.raycast(origin, dir, dist, G.TERRAIN | G.STATIC | G.ICE, ctx.player?.body);
@@ -137,6 +143,12 @@ export class World {
   private fireflyAcc = 0;
 
   update(dt: number) {
+    if (this.timers.length) {
+      for (const t of this.timers) t.t -= dt;
+      const due = this.timers.filter((t) => t.t <= 0);
+      this.timers = this.timers.filter((t) => t.t > 0);
+      for (const t of due) t.fn();
+    }
     // fireflies drift over grassy ground at night
     if (ctx.sky.night > 0.55 && !ctx.weather.raining) {
       this.fireflyAcc += dt * 14;

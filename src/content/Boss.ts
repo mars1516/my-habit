@@ -119,7 +119,7 @@ function spawnBoss(C: THREE.Vector3, onReset: () => void) {
     for (const e of ctx.enemies.list) if (e.alive && e.kind !== 'lord' && e.pos.distanceTo(C) < 60) e.die();
     ctx.fx.sphere(boss.chest(), '#ffe8a0', 14, 2);
     ctx.cam.shake(1);
-    setTimeout(() => ctx.quests.evaluate(), 3500);
+    ctx.world.after(3.5, () => ctx.quests.evaluate());
   };
 
   const ring = (radius: number, dmg: number, color: string) => {

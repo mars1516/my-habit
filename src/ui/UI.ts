@@ -791,7 +791,7 @@ export class UI {
   }
 
   showEnding() {
-    setTimeout(() => {
+    ctx.world.after(2.5, () => {
       this.open('ending');
       const wrap = h('div', 'ending-wrap');
       wrap.innerHTML = `<div class="end-title">에테리아에 빛이 돌아왔다</div>
@@ -802,7 +802,7 @@ export class UI {
       wrap.append(this.button('계속 탐험하기', () => this.close(), 'primary'));
       this.screenEl.append(wrap);
       this.autosave(false);
-    }, 2500);
+    });
   }
 
   // ---- misc ------------------------------------------------------------------

@@ -164,7 +164,7 @@ export class Enemy {
     if (!this.alive) return;
     if (this.state === 'dormant') {
       this.setState('awaken');
-      this.char.play('Skeletons_Awaken_Floor_Long', { once: true, fade: 0.1, speed: 1.6, onDone: () => this.setState('alert') });
+      this.char.play('Skeletons_Awaken_Floor', { once: true, fade: 0.1, speed: 1.6, onDone: () => this.setState('alert') });
       return;
     }
     if (this.state === 'idle' || this.state === 'return') {

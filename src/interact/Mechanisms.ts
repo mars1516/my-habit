@@ -870,14 +870,14 @@ export class Chest extends Prop {
     this.anim = 0;
     ctx.player.busy('Interact', 0.7, 1.4);
     events.emit('sound', { name: 'chest', pos: this.pos, volume: 0.8 });
-    setTimeout(() => {
+    ctx.world.after(0.45, () => {
       for (const l of this.loot) {
         ctx.save.add(l.item, l.n);
         const def = ITEMS[l.item];
         events.emit('pickup', { id: l.item, name: def?.name ?? l.item, count: l.n, icon: def?.icon ?? '❔' });
       }
       ctx.particles.emit({ pos: this.pos.clone().add(new THREE.Vector3(0, 1, 0)), count: 30, vel: new THREE.Vector3(0, 3, 0), spread: 2.5, life: [0.6, 1.2], size: [0.35, 0.05], color: '#ffe8a0' });
-    }, 450);
+    });
   }
   override update(dt: number) {
     if (this.anim < 0 || !this.lid) return;

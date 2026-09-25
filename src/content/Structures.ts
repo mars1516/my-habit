@@ -349,10 +349,10 @@ export function shrineBase(id: string, element: Element, center: THREE.Vector3, 
       events.emit('skillUnlocked', { element });
       events.emit('sound', { name: 'skill_unlock', volume: 1 });
       events.emit('banner', { title: `새로운 마법: ${ELEMENT_INFO[element].name}`, sub: `${SKILLS[element].name} · ${SKILLS[element].skillName}`, color });
-      setTimeout(() => {
+      ctx.world.after(1.5, () => {
         ctx.skills.select(element);
         ctx.ui.showDialog(SKILL_TUTORIAL[element]);
-      }, 1500);
+      });
     },
   });
 }

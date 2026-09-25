@@ -16,8 +16,11 @@ function maskedClip(lib: 'adventurer' | 'skeleton', name: string, mask: Mask) {
   const key = `${lib}:${name}:${mask}`;
   let c = clipCache.get(key);
   if (c) return c;
-  const src = assets.clips[lib].find((a) => a.name === name);
-  if (!src) throw new Error(`missing clip ${name}`);
+  let src = assets.clips[lib].find((a) => a.name === name);
+  if (!src) {
+    console.warn(`missing clip ${name}, using Idle`);
+    src = assets.clips[lib].find((a) => a.name === 'Idle')!;
+  }
   if (mask === 'full') c = src;
   else {
     const tracks = src.tracks.filter((t) => {

@@ -71,7 +71,7 @@ export class CameraRig {
       this.yaw -= input.mouseDX * sens;
       this.pitch -= input.mouseDY * sens * (ctx.settings?.invertY ? -1 : 1);
     }
-    this.pitch = clamp(this.pitch, -1.25, 1.0);
+    this.pitch = clamp(this.pitch, -1.25, 0.9);
     if (!this.wheelLocked && input.wheel !== 0) this.targetDistance = clamp(this.targetDistance + input.wheel * 0.8, 2.8, 14);
     this.distance += (this.targetDistance - this.distance) * damp(8, dt);
     this.aimBlend += ((aiming ? 1 : 0) - this.aimBlend) * damp(12, dt);
@@ -86,12 +86,14 @@ export class CameraRig {
     this.pivot.z += (target.z - this.pivot.z) * damp(16, dt);
     this.pivot.y += (target.y - this.pivot.y) * damp(9, dt);
 
-    const dist = lerp(this.distance, 2.4, this.aimBlend);
+    // looking up: pull the camera in so it doesn't sink under the character
+    const up = Math.max(0, this.pitch - 0.25);
+    const dist = lerp(this.distance * (1 - up * 0.55), 2.4, this.aimBlend);
     const shoulder = lerp(0.0, 0.85, this.aimBlend);
     const look = this.lookDir(new THREE.Vector3());
     const right = this.right(new THREE.Vector3());
     const pivot = this.pivot.clone().addScaledVector(right, -shoulder);
-    pivot.y += this.aimBlend * 0.15;
+    pivot.y += this.aimBlend * 0.15 + up * 0.8;
 
     // collision: pull the camera in front of terrain/props
     const back = look.clone().multiplyScalar(-1);
