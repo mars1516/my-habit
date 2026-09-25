@@ -1,0 +1,210 @@
+import * as THREE from 'three';
+import { assets, type CharacterKey } from '../core/Assets';
+import { damp } from '../core/math';
+
+// GLTFLoader strips '.' from node names: 'hand.r' -> 'handr'.
+const UPPER = new Set([
+  'spine', 'chest', 'head',
+  'upperarml', 'lowerarml', 'wristl', 'handl', 'handslotl', 'elbowIKl', 'handIKl',
+  'upperarmr', 'lowerarmr', 'wristr', 'handr', 'handslotr', 'elbowIKr', 'handIKr',
+]);
+
+type Mask = 'full' | 'upper' | 'lower';
+
+const clipCache = new Map<string, THREE.AnimationClip>();
+function maskedClip(lib: 'adventurer' | 'skeleton', name: string, mask: Mask) {
+  const key = `${lib}:${name}:${mask}`;
+  let c = clipCache.get(key);
+  if (c) return c;
+  const src = assets.clips[lib].find((a) => a.name === name);
+  if (!src) throw new Error(`missing clip ${name}`);
+  if (mask === 'full') c = src;
+  else {
+    const tracks = src.tracks.filter((t) => {
+      const bone = t.name.split('.')[0];
+      const up = UPPER.has(bone);
+      return mask === 'upper' ? up : !up;
+    });
+    c = new THREE.AnimationClip(`${name}_${mask}`, src.duration, tracks);
+  }
+  clipCache.set(key, c);
+  return c;
+}
+
+export const CHAR_SCALE = 0.68;
+
+interface LocoPair {
+  name: string;
+  full: THREE.AnimationAction;
+  lower: THREE.AnimationAction;
+}
+
+export class Character {
+  root = new THREE.Group();
+  model: THREE.Object3D;
+  mixer: THREE.AnimationMixer;
+  private actions = new Map<string, THREE.AnimationAction>();
+  private loco: LocoPair | null = null;
+  private fading: LocoPair[] = [];
+  private upper: THREE.AnimationAction | null = null;
+  private upperTarget = 0;
+  private upperBlend = 0;
+  private onceDone: (() => void) | null = null;
+  private upperDone: (() => void) | null = null;
+  materials: THREE.MeshStandardMaterial[] = [];
+  bones = new Map<string, THREE.Object3D>();
+  currentName = '';
+
+  constructor(public key: CharacterKey, public lib: 'adventurer' | 'skeleton', scale = CHAR_SCALE) {
+    this.root.userData.isCharacter = true;
+    this.model = assets.character(key);
+    this.model.scale.setScalar(scale);
+    this.root.add(this.model);
+    this.model.traverse((o) => {
+      if (o.name) this.bones.set(o.name, o);
+      const m = o as THREE.SkinnedMesh;
+      if (m.isSkinnedMesh) {
+        m.castShadow = true;
+        this.materials.push(m.material as THREE.MeshStandardMaterial);
+      }
+    });
+    this.mixer = new THREE.AnimationMixer(this.model);
+    this.mixer.addEventListener('finished', (e) => {
+      const action = (e as unknown as { action: THREE.AnimationAction }).action;
+      if (this.upper && action === this.upper) {
+        this.upperTarget = 0;
+        const cb = this.upperDone;
+        this.upperDone = null;
+        cb?.();
+      } else if (this.loco && action === this.loco.full) {
+        const cb = this.onceDone;
+        this.onceDone = null;
+        cb?.();
+      }
+    });
+  }
+
+  bone(name: string) {
+    return this.bones.get(name.replace(/\./g, ''));
+  }
+
+  hide(names: string[]) {
+    for (const n of names) {
+      const o = this.bones.get(n);
+      if (o) o.visible = false;
+    }
+  }
+
+  private action(name: string, mask: Mask) {
+    const key = `${name}:${mask}`;
+    let a = this.actions.get(key);
+    if (!a) {
+      a = this.mixer.clipAction(maskedClip(this.lib, name, mask));
+      this.actions.set(key, a);
+    }
+    return a;
+  }
+
+  hasClip(name: string) {
+    return !!assets.clips[this.lib].find((a) => a.name === name);
+  }
+
+  /** Base (locomotion or full-body) animation. */
+  play(name: string, opts: { fade?: number; speed?: number; once?: boolean; onDone?: () => void; restart?: boolean } = {}) {
+    const fade = opts.fade ?? 0.2;
+    const speed = opts.speed ?? 1;
+    if (this.loco && this.loco.name === name && !opts.restart) {
+      this.loco.full.timeScale = speed;
+      this.loco.lower.timeScale = speed;
+      return;
+    }
+    const full = this.action(name, 'full');
+    const lower = this.action(name, 'lower');
+    for (const a of [full, lower]) {
+      a.reset();
+      a.enabled = true;
+      a.timeScale = speed;
+      a.setLoop(opts.once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      a.clampWhenFinished = !!opts.once;
+      a.fadeIn(fade).play();
+    }
+    if (this.loco) {
+      this.loco.full.fadeOut(fade);
+      this.loco.lower.fadeOut(fade);
+      this.fading.push(this.loco);
+    }
+    this.loco = { name, full, lower };
+    this.fading = this.fading.filter((p) => p.name !== name);
+    this.currentName = name;
+    this.onceDone = opts.once ? opts.onDone ?? null : null;
+  }
+
+  /** Upper-body overlay (casting while moving). */
+  playUpper(name: string, opts: { fade?: number; speed?: number; onDone?: () => void; hold?: boolean } = {}) {
+    const a = this.action(name, 'upper');
+    if (this.upper && this.upper !== a) this.upper.fadeOut(opts.fade ?? 0.1);
+    a.reset();
+    a.enabled = true;
+    a.timeScale = opts.speed ?? 1;
+    a.setLoop(opts.hold ? THREE.LoopRepeat : THREE.LoopOnce, Infinity);
+    a.clampWhenFinished = true;
+    a.fadeIn(opts.fade ?? 0.08).play();
+    this.upper = a;
+    this.upperTarget = 1;
+    this.upperDone = opts.onDone ?? null;
+  }
+
+  stopUpper(fade = 0.2) {
+    if (this.upper) this.upper.fadeOut(fade);
+    this.upperTarget = 0;
+  }
+
+  get upperActive() {
+    return this.upperTarget > 0;
+  }
+
+  update(dt: number) {
+    this.upperBlend += (this.upperTarget - this.upperBlend) * damp(18, dt);
+    const u = this.upperBlend;
+    const apply = (p: LocoPair) => {
+      p.full.weight = 1 - u;
+      p.lower.weight = u;
+    };
+    if (this.loco) apply(this.loco);
+    for (const p of this.fading) apply(p);
+    this.fading = this.fading.filter((p) => p.full.isRunning() && p.full.getEffectiveWeight() > 0.001);
+    if (this.upper) {
+      this.upper.weight = u;
+      if (u < 0.01 && this.upperTarget === 0) {
+        this.upper.stop();
+        this.upper = null;
+      }
+    }
+    this.mixer.update(dt);
+  }
+
+  private tintColor = new THREE.Color();
+  /** Emissive tint for hit flashes and elemental statuses. */
+  setTint(color: THREE.ColorRepresentation, amount: number) {
+    this.tintColor.set(color).multiplyScalar(amount);
+    for (const m of this.materials) m.emissive.copy(this.tintColor);
+  }
+
+  setOpacity(a: number) {
+    for (const m of this.materials) {
+      m.transparent = a < 1;
+      m.opacity = a;
+    }
+  }
+
+  attach(boneName: string, obj: THREE.Object3D) {
+    const b = this.bone(boneName);
+    if (b) b.add(obj);
+    return obj;
+  }
+
+  dispose() {
+    this.mixer.stopAllAction();
+    this.root.removeFromParent();
+  }
+}

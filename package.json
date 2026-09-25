@@ -1,0 +1,28 @@
+{
+  "name": "etheria-hand-of-elements",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "assets": "node scripts/prepare-assets.mjs"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@fontsource/gowun-batang": "^5.3.0",
+    "pretendard": "^1.3.9",
+    "simplex-noise": "^4.0.3",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.0",
+    "@gltf-transform/functions": "^4.5.0",
+    "@types/three": "^0.186.0",
+    "playwright": "1.56",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1"
+  }
+}
