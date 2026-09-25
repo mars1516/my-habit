@@ -64,7 +64,7 @@ function buildTemple() {
   const b2 = ctx.props.add(new Brazier(new THREE.Vector3(c.x + 4.5, y, c.z - half + 3.5)));
   brazierPuzzle([b1, b2], 'temple_gate');
   sign(new THREE.Vector3(c.x + 3, y, c.z + 2), Math.PI, 'controls', '조작법',
-    'WASD 이동 · Shift 달리기 · Space 점프(공중에서 한 번 더: 활공) · C 회피\n좌클릭 기본 마법 · E 원소 스킬 · Q 원소 폭발 · 우클릭 조준\n1~5 원소 선택 · F 상호작용 · Tab 가방 · M 지도 · H 빠른 회복 · Esc 메뉴\n벽에 대고 앞으로 움직이면 기어오를 수 있다.');
+    'WASD 이동 · Shift 달리기 · Space 점프(공중에서 한 번 더: 활공) · C 회피\n좌클릭 기본 마법 · E 원소 스킬 · Q 원소 폭발 · 우클릭 조준 · 휠 클릭/T 적 주목\n1~5 원소 선택 · F 상호작용 · Tab 가방 · M 지도 · H 빠른 회복 · Esc 메뉴\n벽에 대고 앞으로 움직이면 기어오를 수 있다.');
   sign(new THREE.Vector3(c.x - 3, y, c.z - half + 6), 0, 'gatehint', '낡은 석판', '「봉인문은 두 개의 불꽃을 기억한다.」\n\n화로를 향해 좌클릭으로 화염탄을 쏘아 불을 붙이자.');
   ctx.props.add(new Campfire(new THREE.Vector3(c.x - 6, y, c.z + 6), 'temple', true));
   // first chest waiting outside the gate

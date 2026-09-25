@@ -54,8 +54,8 @@ interface Key {
 }
 
 const KEYS: Key[] = [
-  { e: -1.0, zenith: '#060a1c', horizon: '#121a36', sun: '#8aa4ff', sunI: 0.35, hemiSky: '#2a3a70', hemiGround: '#141c18', hemiI: 0.55 },
-  { e: -0.15, zenith: '#0c1430', horizon: '#26305a', sun: '#8aa4ff', sunI: 0.3, hemiSky: '#34447a', hemiGround: '#1a2218', hemiI: 0.6 },
+  { e: -1.0, zenith: '#081030', horizon: '#1c2a52', sun: '#a4b8ff', sunI: 0.9, hemiSky: '#5068a8', hemiGround: '#26302c', hemiI: 1.15 },
+  { e: -0.15, zenith: '#0e1838', horizon: '#2c3a66', sun: '#a4b8ff', sunI: 0.8, hemiSky: '#5a6aa8', hemiGround: '#28302a', hemiI: 1.1 },
   { e: 0.0, zenith: '#3b4f86', horizon: '#f39a62', sun: '#ff9a55', sunI: 1.0, hemiSky: '#8a8fb0', hemiGround: '#4a4030', hemiI: 0.8 },
   { e: 0.18, zenith: '#4d86d0', horizon: '#ffd2a0', sun: '#ffd9a8', sunI: 2.2, hemiSky: '#a8c8f0', hemiGround: '#5a5a3a', hemiI: 1.0 },
   { e: 0.45, zenith: '#3f8ee6', horizon: '#bfe4ff', sun: '#fff4e2', sunI: 2.9, hemiSky: '#c4e2ff', hemiGround: '#5c6e3c', hemiI: 1.15 },

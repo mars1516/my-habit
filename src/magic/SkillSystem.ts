@@ -115,6 +115,8 @@ export class SkillSystem {
     const aiming = ctx.input.isDown('Mouse2');
     const ray = ctx.cam.aimRay(maxDist + 20);
     const hand = ctx.player.handWorld(new THREE.Vector3());
+    const locked = ctx.cam.lock;
+    if (locked && locked.alive) return { point: locked.chest(), enemy: locked, water: false, hand };
     if (!aiming) {
       const e = ctx.enemies?.findTarget(ctx.player.pos, ctx.cam.forward(new THREE.Vector3()), maxDist, Math.cos(0.75));
       if (e) return { point: e.chest(), enemy: e, water: false, hand };

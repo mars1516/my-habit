@@ -843,7 +843,7 @@ body {
 .title-sub {
   font-family: var(--title-font);
   font-size: clamp(16px, 2.4vw, 26px);
-  letter-spacing: 0.5em;
+  letter-spacing: 0.32em;
   color: var(--gold);
   margin: 0 0 42px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
@@ -1355,4 +1355,28 @@ body {
   .hud-tl { transform: scale(0.8); transform-origin: top left; }
   .hud-br { transform: scale(0.8); transform-origin: bottom right; }
   .hud-bl { transform: scale(0.8); transform-origin: bottom left; }
+}
+
+.hud.in-dialog .hud-bl,
+.hud.in-dialog .hud-br,
+.hud.in-dialog .hint,
+.hud.in-dialog .prompt,
+.hud.in-dialog .stamina {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.hud.under-map {
+  visibility: hidden;
+}
+
+.lock-reticle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 46px;
+  height: 46px;
+  border: 3px dashed #ffcf4a;
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 207, 74, 0.6);
 }

@@ -197,7 +197,7 @@ export class MapView {
     g.beginPath();
     g.arc(w / 2, w / 2, w / 2 - 2, 0, Math.PI * 2);
     g.clip();
-    g.fillStyle = '#3a6f8a';
+    g.fillStyle = 'rgb(64,118,174)';
     g.fillRect(0, 0, w, w);
     g.translate(w / 2, w / 2);
     g.rotate(yaw - Math.PI);
@@ -235,7 +235,7 @@ export class MapView {
   drawFull(canvas: HTMLCanvasElement, view: { cx: number; cz: number; zoom: number }) {
     const g = canvas.getContext('2d')!;
     const w = canvas.width, h = canvas.height;
-    g.fillStyle = '#2d5a72';
+    g.fillStyle = 'rgb(64,118,174)';
     g.fillRect(0, 0, w, h);
     const scale = (Math.min(w, h) / WORLD_SIZE) * view.zoom;
     g.save();

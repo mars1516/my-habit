@@ -134,7 +134,23 @@ export class World {
     }
   }
 
+  private fireflyAcc = 0;
+
   update(dt: number) {
+    // fireflies drift over grassy ground at night
+    if (ctx.sky.night > 0.55 && !ctx.weather.raining) {
+      this.fireflyAcc += dt * 14;
+      const p = ctx.player.pos;
+      while (this.fireflyAcc >= 1) {
+        this.fireflyAcc -= 1;
+        const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 26;
+        const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+        const i = ctx.terrain.cellIndex(x, z);
+        if (i < 0 || ctx.terrain.grass[i] < 90) continue;
+        const y = ctx.terrain.heightAt(x, z) + 0.4 + Math.random() * 1.6;
+        ctx.particles.emit({ pos: new THREE.Vector3(x, y, z), spread: 0.35, vel: new THREE.Vector3(0, 0.15, 0), life: [2.5, 4.5], size: [0.22, 0.12], alpha: [1, 0], color: '#d8ff7a', color2: '#9fff60', drag: 0.1 });
+      }
+    }
     for (const u of this.updrafts) {
       u.t -= dt;
       if (Math.random() < 0.9) {

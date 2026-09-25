@@ -97,7 +97,7 @@ export const POIS: Poi[] = [
   // shrines grant a new element each
   { id: 'shrine_wind', kind: 'shrine', x: 412, z: -78, name: '바람의 사당', element: 'wind', flatten: 20 },
   { id: 'shrine_ice', kind: 'shrine', x: P.lake.x, z: P.lake.z, name: '서리의 사당', element: 'ice', flatten: 17 },
-  { id: 'shrine_kinesis', kind: 'shrine', x: -330, z: 290, name: '속삭임의 사당', element: 'kinesis', flatten: 20 },
+  { id: 'shrine_kinesis', kind: 'shrine', x: -300, z: 262, name: '속삭임의 사당', element: 'kinesis', flatten: 20 },
   { id: 'shrine_lightning', kind: 'shrine', x: P.peak.x, z: P.peak.z, name: '뇌운의 사당', element: 'lightning', flatten: 20 },
   // observation towers reveal the map
   { id: 'tower_plains', kind: 'tower', x: 175, z: 20, name: '평원 관측탑', flatten: 8 },
@@ -107,12 +107,12 @@ export const POIS: Poi[] = [
   // fast travel
   { id: 'wp_temple', kind: 'waypoint', x: 22, z: 268, name: '새벽 고원', flatten: 6 },
   { id: 'wp_village', kind: 'waypoint', x: 262, z: 170, name: '바람골 마을', flatten: 6 },
-  { id: 'wp_forest', kind: 'waypoint', x: -290, z: 245, name: '속삭임의 숲', flatten: 6 },
+  { id: 'wp_forest', kind: 'waypoint', x: -262, z: 236, name: '속삭임의 숲', flatten: 6 },
   { id: 'wp_lake', kind: 'waypoint', x: -120, z: -210, name: '서리 호숫가', flatten: 6 },
   { id: 'wp_peak', kind: 'waypoint', x: 95, z: -170, name: '뇌운산 기슭', flatten: 6 },
   { id: 'wp_cliffs', kind: 'waypoint', x: 372, z: -40, name: '동쪽 절벽', flatten: 6 },
   { id: 'wp_altar', kind: 'waypoint', x: 30, z: 30, name: '제단 입구', flatten: 6 },
-  { id: 'wp_beach', kind: 'waypoint', x: -110, z: 385, name: '남서 해안', flatten: 6 },
+  { id: 'wp_beach', kind: 'waypoint', x: -100, z: 352, name: '남서 해안', flatten: 6 },
   // goddess statues (offer spirit seeds)
   { id: 'statue_village', kind: 'statue', x: 318, z: 104, name: '바람골 여신상', flatten: 6 },
   { id: 'statue_forest', kind: 'statue', x: -215, z: 165, name: '숲의 여신상', flatten: 6 },
@@ -120,10 +120,10 @@ export const POIS: Poi[] = [
   // skeleton camps
   { id: 'camp_plains', kind: 'camp', x: 165, z: -45, name: '평원 해골 야영지', flatten: 14 },
   { id: 'camp_forest', kind: 'camp', x: -190, z: 105, name: '숲 해골 야영지', flatten: 14 },
-  { id: 'camp_lake', kind: 'camp', x: -330, z: -330, name: '호수 북쪽 야영지', flatten: 14 },
+  { id: 'camp_lake', kind: 'camp', x: -300, z: -318, name: '호수 북쪽 야영지', flatten: 14 },
   { id: 'camp_peak', kind: 'camp', x: 130, z: -130, name: '산길 야영지', flatten: 14 },
   { id: 'camp_east', kind: 'camp', x: 320, z: -160, name: '동쪽 야영지', flatten: 14 },
-  { id: 'camp_beach', kind: 'camp', x: -40, z: 400, name: '해안 야영지', flatten: 14 },
+  { id: 'camp_beach', kind: 'camp', x: -36, z: 372, name: '해안 야영지', flatten: 14 },
   { id: 'camp_plateau', kind: 'camp', x: -45, z: 215, name: '고원 폐허', flatten: 10 },
   // brazier puzzles
   { id: 'braziers_temple', kind: 'braziers', x: 0, z: 262, name: '사원의 화로' },
@@ -140,9 +140,9 @@ export const ROADS: [number, number][][] = [
   [[262, 170], [180, 90], [100, 40], [30, 30], [20, -10]],
   [[30, 30], [-60, -40], [-110, -100], [-120, -200]],
   [[20, -80], [70, -130], [95, -170]],
-  [[0, 285], [-60, 280], [-140, 262], [-220, 250], [-290, 245]],
-  [[-290, 245], [-250, 150], [-215, 60], [-170, -30], [-110, -100]],
-  [[-60, 280], [-80, 340], [-110, 385]],
+  [[0, 285], [-60, 280], [-140, 262], [-210, 248], [-262, 236]],
+  [[-262, 236], [-250, 150], [-215, 60], [-170, -30], [-110, -100]],
+  [[-60, 280], [-80, 330], [-100, 352]],
 ];
 
 const FLATTENS: Flatten[] = [
@@ -155,11 +155,11 @@ const dist = (x: number, z: number, p: { x: number; z: number }) => Math.hypot(x
 
 /** Terrain height before local flattening. */
 function rawHeight(x: number, z: number) {
-  const warp = noiseC(x * 0.0026, z * 0.0026) * 70;
+  const warp = noiseC(x * 0.0026, z * 0.0026) * 50;
   const r = Math.hypot(x, z * 1.04) + warp;
-  const land = 1 - smoothstep(370, 470, r);
+  const land = 1 - smoothstep(395, 492, r);
 
-  let h = -24 + land * 32;
+  let h = -24 + land * 38;
   h += land * fbm(x * 0.0042, z * 0.0042, 4) * 11;
   h += land * Math.max(0, fbm(x * 0.0017 + 11, z * 0.0017 - 7, 3)) * 26;
 
@@ -199,7 +199,8 @@ function rawHeight(x: number, z: number) {
   return h;
 }
 
-const flattenTargets = FLATTENS.map((f) => (f.height ?? rawHeight(f.x, f.z)) + (f.offset ?? 0));
+// flattened sites never sit below the sea (the lake island is already high)
+const flattenTargets = FLATTENS.map((f) => Math.max(SEA_LEVEL + 3.5, (f.height ?? rawHeight(f.x, f.z)) + (f.offset ?? 0)));
 
 export function computeHeight(x: number, z: number) {
   let h = rawHeight(x, z);

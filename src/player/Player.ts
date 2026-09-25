@@ -91,27 +91,35 @@ export class Player {
   }
 
   private buildWings() {
+    // feathered wing drawn on a canvas: several soft, glowing feathers fanning out
     const c = document.createElement('canvas');
-    c.width = 128;
+    c.width = 256;
     c.height = 256;
     const g = c.getContext('2d')!;
-    const grad = g.createLinearGradient(0, 0, 128, 0);
-    grad.addColorStop(0, 'rgba(160,255,230,0.95)');
-    grad.addColorStop(1, 'rgba(120,200,255,0.0)');
-    g.fillStyle = grad;
-    g.beginPath();
-    g.moveTo(4, 30);
-    g.bezierCurveTo(90, 0, 128, 40, 124, 120);
-    g.bezierCurveTo(110, 170, 70, 230, 10, 240);
-    g.bezierCurveTo(30, 180, 20, 100, 4, 30);
-    g.fill();
-    g.strokeStyle = 'rgba(230,255,250,0.9)';
-    g.lineWidth = 2;
-    for (let i = 0; i < 5; i++) {
+    g.translate(12, 128);
+    const feathers = 7;
+    for (let i = 0; i < feathers; i++) {
+      const a = -0.95 + (i / (feathers - 1)) * 1.5;
+      const len = 150 + Math.sin((i / (feathers - 1)) * Math.PI) * 80;
+      g.save();
+      g.rotate(a);
+      const grad = g.createLinearGradient(0, 0, len, 0);
+      grad.addColorStop(0, 'rgba(210,255,245,0.95)');
+      grad.addColorStop(0.55, 'rgba(140,240,220,0.75)');
+      grad.addColorStop(1, 'rgba(120,200,255,0)');
+      g.fillStyle = grad;
       g.beginPath();
-      g.moveTo(8, 40 + i * 40);
-      g.quadraticCurveTo(60, 50 + i * 30, 110 - i * 12, 70 + i * 36);
+      g.moveTo(0, 0);
+      g.quadraticCurveTo(len * 0.5, -22, len, 0);
+      g.quadraticCurveTo(len * 0.5, 16, 0, 0);
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.8)';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(4, 0);
+      g.lineTo(len * 0.85, -2);
       g.stroke();
+      g.restore();
     }
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -121,19 +129,19 @@ export class Player {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
-      color: new THREE.Color(1.6, 1.8, 1.8),
+      color: new THREE.Color(1.3, 1.5, 1.5),
+      fog: false,
     });
     const group = new THREE.Group();
     for (const side of [-1, 1]) {
-      const geo = new THREE.PlaneGeometry(1.1, 1.6);
-      geo.translate(0.55, -0.1, 0);
+      const geo = new THREE.PlaneGeometry(1.9, 1.9);
+      geo.translate(0.95 - 0.09, 0, 0);
       const m = new THREE.Mesh(geo, mat);
       m.scale.x = side;
-      m.rotation.y = side * 0.35;
       m.userData.side = side;
       group.add(m);
     }
-    group.position.set(0, 1.25, -0.25);
+    group.position.set(0, 1.2, -0.28);
     group.visible = false;
     this.char.root.add(group);
     return group;
@@ -344,11 +352,12 @@ export class Player {
     this.wingOpen += ((this.state === 'glide' ? 1 : 0) - this.wingOpen) * damp(10, dt);
     this.wings.visible = this.wingOpen > 0.02;
     if (this.wings.visible) {
-      const flap = Math.sin(ctx.time * 5) * 0.12;
+      const flap = Math.sin(ctx.time * 4) * 0.1;
       for (const w of this.wings.children) {
         const side = w.userData.side as number;
-        w.rotation.y = side * (0.35 + (1 - this.wingOpen) * 1.3 + flap);
-        w.scale.y = this.wingOpen;
+        // swept back and slightly raised, folding in when closing
+        w.rotation.set(-0.35, side * (0.45 + (1 - this.wingOpen) * 1.2), side * (0.25 + flap));
+        w.scale.set(side * this.wingOpen, this.wingOpen, 1);
       }
       if (Math.random() < 0.5)
         ctx.particles.emit({

@@ -51,6 +51,7 @@ export class UI {
   private bossBar: HTMLElement;
   private fpsEl: HTMLElement;
   private hintEl: HTMLElement;
+  private lockEl: HTMLElement;
   private statusEl: HTMLElement;
   private slots = new Map<Element, HTMLElement>();
   private eBtn: HTMLElement;
@@ -135,7 +136,8 @@ export class UI {
     this.bossBar = h('div', 'bossbar hidden', '<div class="bname">해골 군주</div><div class="btrack"><div class="bfill"></div></div><div class="bshield"></div>');
     this.fpsEl = h('div', 'fps hidden');
     this.hintEl = h('div', 'hint');
-    this.hud.append(tl, bl, this.staminaCanvas, br, this.crosshair, this.promptEl, this.toastsEl, this.pickupsEl, this.bannerEl, this.bossBar, this.fpsEl, this.hintEl);
+    this.lockEl = h('div', 'lock-reticle hidden');
+    this.hud.append(tl, bl, this.staminaCanvas, br, this.crosshair, this.promptEl, this.toastsEl, this.pickupsEl, this.bannerEl, this.bossBar, this.fpsEl, this.hintEl, this.lockEl);
     for (let i = 0; i < 14; i++) {
       const b = h('div', 'ehp hidden', '<div class="ename"></div><div class="etrack"><div class="efill"></div></div><div class="ealert">!</div>');
       this.hpBars.push(b);
@@ -212,6 +214,8 @@ export class UI {
     this.screen = s;
     this.screenEl.innerHTML = '';
     this.screenEl.className = `screen screen-${s}`;
+    this.hud.classList.toggle('in-dialog', s === 'dialog');
+    this.hud.classList.toggle('under-map', s === 'map');
     ctx.input.enabled = false;
     ctx.input.exitLock();
     if (s !== 'title') this.game.mode = 'ui';
@@ -249,8 +253,10 @@ export class UI {
     this.screen = 'none';
     this.screenEl.className = 'screen hidden';
     this.screenEl.innerHTML = '';
+    this.hud.classList.remove('in-dialog', 'under-map');
     this.game.mode = 'playing';
     ctx.input.enabled = true;
+    ctx.input.clearPressed();
     ctx.input.requestLock();
     events.emit('sound', { name: 'ui_close', volume: 0.3 });
   }
@@ -281,7 +287,7 @@ export class UI {
     this.screenEl.className = 'screen screen-title';
     this.screenEl.innerHTML = '';
     const wrap = h('div', 'title-wrap');
-    wrap.append(h('div', 'title-logo', '에테리아'), h('div', 'title-sub', '원 소 의 &nbsp; 손'));
+    wrap.append(h('div', 'title-logo', '에테리아'), h('div', 'title-sub', '원소의 손'));
     const menu = h('div', 'title-menu');
     if (hasSave) menu.append(this.button('이어하기', () => this.onStart?.('continue'), 'primary'));
     menu.append(this.button(hasSave ? '새로운 여정 (처음부터)' : '새로운 여정', () => {
@@ -416,7 +422,7 @@ export class UI {
   private helpContent() {
     const rows: [string, string][] = [
       ['WASD', '이동'], ['Shift', '달리기 / 빠르게 헤엄'], ['Space', '점프 · 공중에서 활공 · 벽에서 도약'], ['C / Alt', '회피 (무적 시간)'],
-      ['마우스', '시점 회전 · 휠: 거리 조절'], ['우클릭 (누르기)', '조준 모드'], ['좌클릭', '기본 마법 (오른손)'], ['E', '원소 스킬'], ['Q', '원소 폭발 (에너지 가득 찰 때)'],
+      ['마우스', '시점 회전 · 휠: 거리 조절'], ['우클릭 (누르기)', '조준 모드'], ['휠 클릭 / T', '적 주목 (락온)'], ['좌클릭', '기본 마법 (오른손)'], ['E', '원소 스킬'], ['Q', '원소 폭발 (에너지 가득 찰 때)'],
       ['1 ~ 5 / R', '원소 선택: 화염 · 빙결 · 바람 · 번개 · 염동력'], ['F', '줍기 · 대화 · 열기 · 조사'], ['Tab / I', '가방'], ['M', '지도 · 텔레포트'], ['H', '빠른 회복 (음식)'], ['Esc', '메뉴'],
     ];
     const box = h('div', 'help');
@@ -1054,6 +1060,12 @@ export class UI {
       const html = `<span class="pk">F</span><span class="pv">${it.verb()}</span><span class="pn">${it.name()}</span>`;
       if (this.promptEl.innerHTML !== html) this.promptEl.innerHTML = html;
     } else this.promptEl.classList.add('hidden');
+
+    // lock-on reticle
+    const lock = ctx.cam.lock;
+    const lp = lock ? this.project(lock.chest()) : null;
+    this.lockEl.classList.toggle('hidden', !lp);
+    if (lp) this.lockEl.style.transform = `translate(${lp.x}px, ${lp.y}px) translate(-50%, -50%) rotate(${ctx.time * 60}deg)`;
 
     // crosshair
     const aiming = ctx.input.isDown('Mouse2') || ctx.skills.selected === 'kinesis';

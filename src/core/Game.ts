@@ -54,7 +54,7 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q === 'high' ? 1.5 : q === 'medium' ? 1.25 : 0.85));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = q === 'low' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -195,6 +195,7 @@ export class Game {
       ctx.cam.update(playing ? dt : 0, ctx.player.pos, aiming);
     }
     ctx.sky.update(dt, this.mode === 'title' ? this.camera.position : ctx.player.pos, this.camera, playing || this.mode === 'title' ? 1 : 0);
+    this.renderer.toneMappingExposure = 1 + ctx.sky.night * 0.25;
     ctx.water.update(dt, ctx.sky, this.camera);
     ctx.grass.update(dt, this.camera.position, ctx.player.pos, ctx.wind, ctx.sky.night);
     ctx.particles.update(playing || this.mode === 'title' ? dt : 0);

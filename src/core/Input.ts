@@ -29,6 +29,7 @@ export class Input {
     });
     window.addEventListener('blur', () => this.down.clear());
     canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 1) e.preventDefault();
       const code = `Mouse${e.button}`;
       this.down.add(code);
       this.pressed.add(code);
@@ -101,6 +102,13 @@ export class Input {
       this.down.delete(code);
       this.released.add(code);
     }
+  }
+
+  /** Forget keys pressed this frame (e.g. the key that closed a menu). */
+  clearPressed() {
+    this.pressed.clear();
+    this.down.delete('KeyF');
+    this.down.delete('Space');
   }
 
   endFrame() {

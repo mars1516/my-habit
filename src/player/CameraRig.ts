@@ -3,6 +3,8 @@ import { ctx } from '../core/ctx';
 import { clamp, damp, lerp } from '../core/math';
 import { G } from '../core/Physics';
 import { waterLevelAt } from '../world/WorldGen';
+import type { Enemy } from '../entities/Enemy';
+import { angleLerp } from '../core/math';
 
 export class CameraRig {
   yaw = Math.PI;
@@ -17,6 +19,8 @@ export class CameraRig {
   /** When true, wheel input is reserved by another system (kinesis distance). */
   wheelLocked = false;
   private tmpDir = new THREE.Vector3();
+  /** Z-targeting: the camera keeps this enemy in view and spells aim at it. */
+  lock: Enemy | null = null;
 
   constructor(public camera: THREE.PerspectiveCamera) {}
 
@@ -34,6 +38,14 @@ export class CameraRig {
     return out.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp).normalize();
   }
 
+  toggleLock() {
+    if (this.lock) {
+      this.lock = null;
+      return;
+    }
+    this.lock = ctx.enemies?.findTarget(ctx.player.pos, this.forward(new THREE.Vector3()), 35, Math.cos(1.1)) ?? null;
+  }
+
   shake(amount: number) {
     this.shakeAmt = Math.min(1.2, this.shakeAmt + amount);
   }
@@ -47,8 +59,18 @@ export class CameraRig {
   update(dt: number, focus: THREE.Vector3, aiming: boolean) {
     const input = ctx.input;
     const sens = 0.0022 * (ctx.settings?.sensitivity ?? 1);
-    this.yaw -= input.mouseDX * sens;
-    this.pitch -= input.mouseDY * sens * (ctx.settings?.invertY ? -1 : 1);
+    if (input.wasPressed('Mouse1') || input.wasPressed('KeyT')) this.toggleLock();
+    if (this.lock && (!this.lock.alive || this.lock.pos.distanceTo(focus) > 45)) this.lock = null;
+    if (this.lock) {
+      const to = this.lock.chest().sub(focus);
+      const yawT = Math.atan2(to.x, to.z);
+      this.yaw = angleLerp(this.yaw, yawT, damp(6, dt));
+      const pitchT = Math.atan2(to.y - 1.5, Math.hypot(to.x, to.z)) - 0.12;
+      this.pitch += (clamp(pitchT, -0.6, 0.4) - this.pitch) * damp(4, dt);
+    } else {
+      this.yaw -= input.mouseDX * sens;
+      this.pitch -= input.mouseDY * sens * (ctx.settings?.invertY ? -1 : 1);
+    }
     this.pitch = clamp(this.pitch, -1.25, 1.0);
     if (!this.wheelLocked && input.wheel !== 0) this.targetDistance = clamp(this.targetDistance + input.wheel * 0.8, 2.8, 14);
     this.distance += (this.targetDistance - this.distance) * damp(8, dt);
@@ -91,6 +113,8 @@ export class CameraRig {
     }
     this.camera.position.copy(pos);
     this.camera.lookAt(pivot.clone().addScaledVector(look, 20));
+    // don't let the hat fill the screen when the camera is squeezed against a wall
+    if (ctx.player) ctx.player.char.model.visible = pos.distanceTo(this.pivot) > 1.25;
     const fov = 62 + this.fovBoost - this.aimBlend * 10;
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov += (fov - this.camera.fov) * damp(6, dt);
