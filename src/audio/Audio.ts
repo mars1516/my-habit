@@ -328,6 +328,11 @@ export class AudioSys {
       case 'appear':
         this.chord([784, 988, 1175, 1568], 0.08, 0.9, vol * 0.2, 'sine');
         break;
+      case 'windblast':
+        this.noise(1.1, vol, { type: 'bandpass', freq: 1800, to: 180, q: 0.7, attack: 0.02, reverb: 0.5 });
+        this.noise(0.5, vol * 0.9, { type: 'lowpass', freq: 400, to: 60, attack: 0.005 });
+        this.tone(90, 0.5, vol * 0.5, { type: 'sine', to: 40 });
+        break;
       case 'charge':
         this.tone(220, 0.9, vol * 0.25, { type: 'sine', to: 440, attack: 0.2, reverb: 0.4 });
         this.noise(0.8, vol * 0.3, { type: 'bandpass', freq: 400, to: 2400, q: 2, attack: 0.3 });

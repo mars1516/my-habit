@@ -5,7 +5,7 @@ import { physics, RAPIER, G } from '../core/Physics';
 import { POIS, P, poi, waterLevelAt, HALF } from '../world/WorldGen';
 import {
   Brazier, brazierPuzzle, Torch, Campfire, Windmill, Crystal, crystalPuzzle, IceWall, Barricade,
-  CrackedRock, Gate, PressurePlate, platePuzzle, Wisp, SpiritRockWatcher, Chest, sign, STONE, DARK_STONE, staticCyl,
+  CrackedRock, Gate, PressurePlate, platePuzzle, Wisp, SpiritRockWatcher, Chest, sign, STONE, DARK_STONE, staticCyl, WindVent,
 } from '../interact/Mechanisms';
 import { ground, place, tower, waypoint, statue, shrineBase, shrineBeacon } from './Structures';
 import { buildVillage } from './Village';
@@ -81,6 +81,10 @@ function buildTemple() {
   ctx.props.add(new Campfire(new THREE.Vector3(c.x - 6, y, c.z + 6), 'temple', true));
   // first chest waiting outside the gate
   new Chest(ground(c.x + 7, c.z - half - 6), Math.PI, 'temple_out', [{ item: 'apple', n: 3 }, { item: 'herb', n: 2 }]);
+  // wind vents: rising air to glide on, as in Hyrule
+  ctx.props.add(new WindVent(ground(80, 170)));
+  ctx.props.add(new WindVent(ground(360, -20)));
+  ctx.props.add(new WindVent(ground(-150, 250)));
   // a glide hint at the plateau's east ramp and a cliff lookout
   sign(ground(92, 232), -Math.PI / 2, 'glide', '여행자의 메모', '고원의 절벽 끝에서 뛰어내린 뒤 공중에서 Space를 누르면 마력의 날개로 활공할 수 있다.\n불타는 풀 위에서는 뜨거운 공기가 몸을 띄워 준다!');
   sign(ground(-20, 330), Math.PI, 'cliffs', '여행자의 메모', '가파른 절벽도 기력이 남아 있다면 기어오를 수 있다.\n기력 원이 비면 떨어지니 조심하자.');
@@ -118,6 +122,8 @@ function buildShrines() {
     ctx.scene.add(col);
     staticCyl(bp.clone().add(new THREE.Vector3(0, H / 2 - 0.5, 0)), H / 2, 4.6);
     shrineBeacon('wind', bp.clone().add(new THREE.Vector3(0, H - 0.5, 0)), 'shrine_wind', 3.4, 12);
+    // solving the windmills wakes a vent beside the pillar: glide up onto it
+    ctx.props.add(new WindVent(ground(bp.x + Math.cos(rot) * 9, bp.z - Math.sin(rot) * 9), 'shrine_wind', 30));
     sign(ground(c.x + Math.sin(rot) * 9, c.z + Math.cos(rot) * 9), rot + Math.PI, 'windtrial', '바람의 시련', '「세 풍차가 함께 노래할 때, 봉인은 바람에 흩어지리라.」');
   }
   // --- Ice: freeze a path to a sheer islet, then melt the ice around the beacon ---

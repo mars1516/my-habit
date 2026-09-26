@@ -17,6 +17,8 @@ export interface EmitOptions {
   gravity?: number;
   drag?: number;
   additive?: boolean;
+  /** 'flame' draws a flickering flame tongue instead of a soft dot. */
+  shape?: 'flame';
 }
 
 const vert = /* glsl */ `
@@ -28,7 +30,10 @@ uniform float uScale;
 void main(){
   vColor = aColor;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = aSize * uScale / max(-mvPosition.z, 0.1);
+  float depth = max(-mvPosition.z, 0.1);
+  // cap on-screen size and fade sprites that are almost touching the lens
+  gl_PointSize = min(aSize * uScale / depth, uScale * 0.22);
+  vColor.a *= smoothstep(0.6, 2.2, depth);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }`;
@@ -43,6 +48,47 @@ void main(){
   float a = uSoft > 0.5 ? pow(max(1.0 - d, 0.0), 1.6) : smoothstep(1.0, 0.7, d);
   if (a <= 0.003) discard;
   gl_FragColor = vec4(vColor.rgb, vColor.a * a);
+  #include <fog_fragment>
+}`;
+
+/** Stylised flame tongue: round bottom, licking pointed top, hot core. */
+const flameVert = /* glsl */ `
+attribute float aSize;
+attribute vec4 aColor;
+varying vec4 vColor;
+varying float vSeed;
+uniform float uScale;
+#include <fog_pars_vertex>
+void main(){
+  vColor = aColor;
+  vSeed = fract(position.x * 1.37 + position.z * 3.11);
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  float depth = max(-mvPosition.z, 0.1);
+  // cap on-screen size and fade sprites that are almost touching the lens
+  gl_PointSize = min(aSize * uScale / depth, uScale * 0.22);
+  vColor.a *= smoothstep(0.6, 2.2, depth);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`;
+const flameFrag = /* glsl */ `
+varying vec4 vColor;
+varying float vSeed;
+uniform float uTime;
+#include <fog_pars_fragment>
+void main(){
+  vec2 c = gl_PointCoord - 0.5;
+  float y = 0.5 - gl_PointCoord.y;           // -0.5 bottom .. 0.5 top
+  float k = clamp(y + 0.5, 0.0, 1.0);        // 0 bottom .. 1 top
+  // the tongue sways more towards its tip
+  float x = c.x + sin(uTime * 9.0 + vSeed * 30.0 + k * 4.0) * 0.08 * k;
+  float w = mix(0.36, 0.0, pow(k, 0.85));     // half width along the height
+  float body = smoothstep(w, w * 0.55, abs(x)) * smoothstep(0.0, 0.14, k);
+  float bottom = smoothstep(0.5, 0.2, length(vec2(x, y + 0.18)) );
+  float a = max(body, bottom * step(k, 0.35));
+  if (a <= 0.01) discard;
+  float core = smoothstep(w * 0.9, 0.0, abs(x)) * (1.0 - k * 0.8);
+  vec3 col = mix(vColor.rgb, vec3(1.0, 0.93, 0.62), core * 0.75);
+  gl_FragColor = vec4(col, vColor.a * a);
   #include <fog_fragment>
 }`;
 
@@ -64,7 +110,7 @@ class Pool {
   aCol: THREE.BufferAttribute;
   aSize: THREE.BufferAttribute;
 
-  constructor(max: number, additive: boolean, soft: boolean) {
+  constructor(max: number, additive: boolean, soft: boolean, flame = false) {
     this.max = max;
     this.pos = new Float32Array(max * 3);
     this.vel = new Float32Array(max * 3);
@@ -83,9 +129,9 @@ class Pool {
     this.geo.setAttribute('aColor', this.aCol);
     this.geo.setAttribute('aSize', this.aSize);
     const mat = new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 600 }, uSoft: { value: soft ? 1 : 0 } }]),
-      vertexShader: vert,
-      fragmentShader: frag,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 600 }, uSoft: { value: soft ? 1 : 0 }, uTime: { value: 0 } }]),
+      vertexShader: flame ? flameVert : vert,
+      fragmentShader: flame ? flameFrag : frag,
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
@@ -125,6 +171,7 @@ class Pool {
   }
 
   update(dt: number) {
+    (this.points.material as THREE.ShaderMaterial).uniforms.uTime.value += dt;
     for (let i = 0; i < this.count; i++) {
       this.life[i] -= dt;
       if (this.life[i] <= 0) {
@@ -166,23 +213,26 @@ const _c1 = new THREE.Color();
 export class Particles {
   glow: Pool;
   smoke: Pool;
+  flame: Pool;
   group = new THREE.Group();
 
   constructor(quality: 'low' | 'medium' | 'high') {
     const cap = quality === 'low' ? 3000 : 7000;
     this.glow = new Pool(cap, true, true);
     this.smoke = new Pool(Math.floor(cap * 0.6), false, true);
-    this.group.add(this.glow.points, this.smoke.points);
+    this.flame = new Pool(Math.floor(cap * 0.5), true, true, true);
+    this.group.add(this.glow.points, this.smoke.points, this.flame.points);
   }
 
   setScale(height: number, fov: number) {
     const scale = height / (2 * Math.tan((fov * Math.PI) / 360));
     (this.glow.points.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
     (this.smoke.points.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
+    (this.flame.points.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
   }
 
   emit(o: EmitOptions) {
-    const pool = o.additive === false ? this.smoke : this.glow;
+    const pool = o.shape === 'flame' ? this.flame : o.additive === false ? this.smoke : this.glow;
     const n = o.count ?? 1;
     _c0.set(o.color ?? '#ffffff');
     _c1.set(o.color2 ?? o.color ?? '#ffffff');
@@ -220,6 +270,7 @@ export class Particles {
   update(dt: number) {
     this.glow.update(dt);
     this.smoke.update(dt);
+    this.flame.update(dt);
   }
 }
 

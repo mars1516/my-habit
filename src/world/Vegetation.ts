@@ -386,7 +386,8 @@ export class Vegetation {
       const top = t.type === 'oak' ? 4 * t.scale : t.type === 'bush' || t.type === 'drybush' ? 0.8 * t.scale : 0.7 * t.scale;
       const pos = TMP_P.set(t.x, t.y + top * (0.4 + Math.random() * 0.6), t.z);
       if (Math.random() < 0.9)
-        ctx.particles.emit({ pos, posSpread: t.type === 'oak' ? 1.8 : 1.0, vel: new THREE.Vector3(0, 3, 0), spread: 1, life: [0.5, 1.0], size: [1.4, 0.2], color: '#ffc050', color2: '#ff3000', count: 2 });
+        ctx.particles.emit({ pos, posSpread: t.type === 'oak' ? 1.8 : 1.0, vel: new THREE.Vector3(ctx.wind.x * 0.5, 2.4, ctx.wind.y * 0.5), spread: 0.5, life: [0.45, 0.8], size: [1.5, 0.45], alpha: [1, 0.1], color: '#ffb43a', color2: '#ff3c10', count: 2, shape: 'flame' });
+      if (Math.random() < 0.3) ctx.particles.emit({ pos, posSpread: 1.2, vel: new THREE.Vector3(0, 4, 0), spread: 1.5, life: [0.8, 1.5], size: [0.12, 0.03], color: '#ffd070', gravity: -0.5 });
       if (Math.random() < 0.15)
         ctx.particles.emit({ pos, posSpread: 1, vel: new THREE.Vector3(0, 3, 0), spread: 0.8, life: [1.5, 2.5], size: [1.5, 3.5], alpha: [0.35, 0], color: '#3a3430', additive: false, drag: 0.8 });
       if (Math.random() < dt * 1.2) ctx.fire.igniteCircle(t.x, t.z, 3, 1.2);

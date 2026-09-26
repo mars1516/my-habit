@@ -29,9 +29,9 @@ export const SKILLS: Record<Element, SkillDef> = {
     desc: '적을 얼리고 불을 끈다. 물 위를 얼려 길을 만들고, 빙주를 세워 높은 곳에 오른다.',
   },
   wind: {
-    name: '돌풍', skillName: '상승 기류', burstName: '대선풍',
-    basicCost: 6, basicCd: 0.45, skillCost: 20, skillCd: 5,
-    desc: '물체와 적을 밀쳐내고 풍차를 돌린다. 상승 기류로 하늘 높이 솟아올라 활공한다.',
+    name: '돌풍', skillName: '폭풍 파동', burstName: '대선풍',
+    basicCost: 6, basicCd: 0.45, skillCost: 20, skillCd: 4,
+    desc: '물체와 적을 밀쳐내고 풍차를 돌린다. 폭풍 파동은 주변의 모든 것을 거센 바람으로 크게 밀쳐낸다.',
   },
   lightning: {
     name: '전격', skillName: '낙뢰', burstName: '뇌신의 심판',
@@ -130,17 +130,29 @@ export class SkillSystem {
     this.pending.push({ t, fn });
   }
 
-  /** Where the spell should go: aim ray, or soft lock-on to an enemy in front. */
+  /**
+   * Where the spell should go: the crosshair (screen centre), with a little aim assist
+   * toward an enemy close to the crosshair, or the locked-on target.
+   */
   private target(maxDist: number) {
-    const aiming = ctx.input.isDown('Mouse2');
     const ray = ctx.cam.aimRay(maxDist + 20);
     const hand = ctx.player.handWorld(new THREE.Vector3());
     const locked = ctx.cam.lock;
     if (locked && locked.alive) return { point: locked.chest(), enemy: locked, water: false, hand };
-    if (!aiming) {
-      const e = ctx.enemies?.findTarget(ctx.player.pos, ctx.cam.forward(new THREE.Vector3()), maxDist, Math.cos(0.75));
-      if (e) return { point: e.chest(), enemy: e, water: false, hand };
+    const assist = ctx.input.isDown('Mouse2') ? 0.05 : 0.11; // radians around the crosshair
+    let best: { e: NonNullable<typeof locked>; a: number } | null = null;
+    for (const e of ctx.enemies?.list ?? []) {
+      if (!e.alive || !e.active) continue;
+      const to = e.chest().sub(ray.origin);
+      const d = to.length();
+      if (d > maxDist + 6) continue;
+      const a = Math.acos(Math.min(1, to.normalize().dot(ray.dir)));
+      const tol = assist + Math.atan2(0.8, d);
+      if (a > tol || (best && a >= best.a)) continue;
+      if (ray.hit && ray.hit.distance < d - 1.5) continue; // something is in the way
+      best = { e, a };
     }
+    if (best) return { point: best.e.chest(), enemy: best.e, water: false, hand };
     return { point: ray.point, enemy: undefined, water: ray.water, hand };
   }
 
@@ -356,16 +368,7 @@ export class SkillSystem {
       }
       case 'wind': {
         this.castAnim('raise', new THREE.Vector3(Math.sin(ctx.player.yaw), 0, Math.cos(ctx.player.yaw)));
-        const base = ctx.player.pos.clone();
-        const r = 5 * L.radius;
-        ctx.world.addUpdraft(base, 3.2 * L.radius, 30 + level * 12, 70 + level * 10, 2.2 + level * 0.4);
-        ctx.fx.ring(base, '#b8ffe6', r, 0.6);
-        if (level >= 2) ctx.fx.ring(base, '#e8fff6', r * 1.4, 0.9);
-        ctx.fx.rune(base.clone().setY(base.y + 0.1), new THREE.Vector3(0, 1, 0), '#9ff5d8', 4 * L.radius, 0.8);
-        ctx.player.launch([19, 24, 30][level - 1]);
-        ctx.enemies?.launchNear(base, r, 12 + level * 3);
-        ctx.props.push(base, new THREE.Vector3(0, 1, 0), r, -1, 9 + level * 3);
-        ctx.world.applyHit({ element: 'wind', pos: base, radius: r, damage: 10 * L.damage, push: 9 + level * 3, source: 'player', kind: 'burst', dir: new THREE.Vector3(0, 1, 0) });
+        this.windBlast(ctx.player.pos.clone(), level);
         break;
       }
       case 'lightning': {
@@ -401,6 +404,46 @@ export class SkillSystem {
       case 'kinesis':
         break;
     }
+  }
+
+  /** Storm wave: a huge radial gust that hurls everything around the caster outward. */
+  private windBlast(base: THREE.Vector3, level: number) {
+    const L = CHARGE_LEVELS[level - 1];
+    const r = 8 * L.radius;
+    const push = 16 + level * 7;
+    const centre = base.clone().setY(base.y + 1);
+    ctx.grass.blast(base, r * 1.15);
+    ctx.fx.ring(base, '#e8fff6', r * 1.15, 0.5);
+    this.later(0.08, () => ctx.fx.ring(base, '#9ff5d8', r * 0.85, 0.45));
+    ctx.fx.dome(centre, '#bfffe8', r, 0.45);
+    ctx.fx.rune(base.clone().setY(base.y + 0.12), new THREE.Vector3(0, 1, 0), '#9ff5d8', 3 + level * 1.5, 0.6);
+    ctx.fx.windSwirl(base, r, level);
+    // streaks racing outward along the ground
+    const n = 40 + level * 30;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.1;
+      const d = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      const sp = r * (2.2 + Math.random());
+      ctx.particles.emit({ pos: base.clone().addScaledVector(d, 0.8).setY(base.y + 0.3 + Math.random() * 1.6), vel: d.multiplyScalar(sp).setY(0.5 + Math.random()), spread: 0.4, life: [0.35, 0.6], size: [0.55, 1.3], alpha: [0.85, 0], color: '#f2fffa', color2: '#8ff5d0', drag: 2.2 });
+    }
+    // kicked-up dust and leaves
+    for (let i = 0; i < 24 + level * 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
+      const p = base.clone().addScaledVector(d, 1 + Math.random() * 2);
+      ctx.particles.emit({ pos: p.setY(ctx.terrain.heightAt(p.x, p.z) + 0.2), vel: d.multiplyScalar(r * 1.4).setY(1.5), spread: 1, life: [0.6, 1.1], size: [1.2, 3], alpha: [0.45, 0], color: '#e0d6b8', additive: false, drag: 2.5 });
+    }
+    ctx.lights.flash(centre, '#b8ffe6', 60 + level * 30, r * 1.5, 0.35);
+    ctx.cam.shake(0.3 + level * 0.15);
+    events.emit('sound', { name: 'windblast', pos: base, volume: 0.8 });
+    const hit = { element: 'wind' as const, pos: centre, radius: r, damage: 12 * L.damage, push, source: 'player' as const, kind: 'burst' as const, dir: new THREE.Vector3(0, 0.2, 0), potency: level };
+    ctx.props.push(centre, new THREE.Vector3(0, 0.35, 0), r, -1, push);
+    ctx.enemies?.push(centre, new THREE.Vector3(0, 0.3 + level * 0.1, 0), r, -1, push);
+    ctx.world.applyHit(hit);
+    // the blast snuffs out flames near the caster and knocks enemy arrows away
+    ctx.fire.extinguishCircle(base.x, base.z, r * 0.6);
+    this.projectiles.deflect(base, r);
+    this.addEnergy(4);
   }
 
   // ---- bursts (Q) --------------------------------------------------------
@@ -581,7 +624,7 @@ export class SkillSystem {
     switch (c.el) {
       case 'fire': return 4.5 * L.radius;
       case 'ice': return c.level > 1 ? 3.2 * L.radius : 1.5;
-      case 'wind': return 5 * L.radius;
+      case 'wind': return 8 * L.radius;
       case 'lightning': return 3.8 * L.radius;
       case 'kinesis': return c.throwing ? 0 : 6 * L.radius;
     }

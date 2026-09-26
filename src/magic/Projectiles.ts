@@ -199,6 +199,15 @@ export class Projectiles {
     }
   }
 
+  /** Blow enemy projectiles out of the air around a point. */
+  deflect(center: THREE.Vector3, r: number) {
+    for (const p of this.list) {
+      if (p.dead || p.source !== 'enemy' || p.pos.distanceTo(center) > r) continue;
+      p.dead = true;
+      ctx.particles.emit({ pos: p.pos, count: 8, spread: 3, life: [0.2, 0.4], size: [0.4, 0.05], color: '#e8fff6' });
+    }
+  }
+
   clear() {
     for (const p of this.list) p.mesh.removeFromParent();
     this.list = [];

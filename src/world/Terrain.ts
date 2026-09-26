@@ -135,6 +135,13 @@ export class Terrain {
     this.maskDirty = true;
   }
 
+  /** Glowing embers under active flames (terrain emissive). */
+  setBurning(i: number, v: number) {
+    if (this.maskData[i * 4 + 3] === v) return;
+    this.maskData[i * 4 + 3] = v;
+    this.maskDirty = true;
+  }
+
   getBurnt(i: number) {
     return this.maskData[i * 4 + 1];
   }
@@ -293,6 +300,12 @@ export class Terrain {
           float burnt = mask.g;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13,0.11,0.1) + n*0.05, burnt*0.85);
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb*vec3(0.75,0.8,0.9), mask.b*0.5);`,
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+          // smouldering ground under the flames
+          totalEmissiveRadiance += vec3(1.0, 0.3, 0.04) * smoothstep(0.1, 0.8, mask.a) * (0.55 + n * 0.9);`,
         );
     };
     this.material = mat;

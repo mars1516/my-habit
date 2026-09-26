@@ -9,8 +9,11 @@ import { angleLerp } from '../core/math';
 export class CameraRig {
   yaw = Math.PI;
   pitch = -0.22;
-  distance = 6.5;
-  targetDistance = 6.5;
+  /** Over-the-right-shoulder follow camera (Fortnite style). */
+  distance = 3.6;
+  targetDistance = 3.6;
+  /** Current sideways offset of the camera to the player's right (shrinks near walls). */
+  private shoulderNow = 0.8;
   aimBlend = 0;
   pivot = new THREE.Vector3();
   private initialized = false;
@@ -72,7 +75,7 @@ export class CameraRig {
       this.pitch -= input.mouseDY * sens * (ctx.settings?.invertY ? -1 : 1);
     }
     this.pitch = clamp(this.pitch, -1.25, 0.9);
-    if (!this.wheelLocked && input.wheel !== 0) this.targetDistance = clamp(this.targetDistance + input.wheel * 0.8, 2.8, 14);
+    if (!this.wheelLocked && input.wheel !== 0) this.targetDistance = clamp(this.targetDistance + input.wheel * 0.5, 2.2, 9);
     this.distance += (this.targetDistance - this.distance) * damp(8, dt);
     this.aimBlend += ((aiming ? 1 : 0) - this.aimBlend) * damp(12, dt);
 
@@ -88,12 +91,16 @@ export class CameraRig {
 
     // looking up: pull the camera in so it doesn't sink under the character
     const up = Math.max(0, this.pitch - 0.25);
-    const dist = lerp(this.distance * (1 - up * 0.55), 2.4, this.aimBlend);
-    const shoulder = lerp(0.0, 0.85, this.aimBlend);
+    const dist = lerp(this.distance * (1 - up * 0.45), 1.9, this.aimBlend);
+    // over the right shoulder: the character sits left of the crosshair
+    let shoulder = lerp(0.72, 0.62, this.aimBlend) * Math.min(1, this.distance / 3.2 + 0.2);
     const look = this.lookDir(new THREE.Vector3());
     const right = this.right(new THREE.Vector3());
-    const pivot = this.pivot.clone().addScaledVector(right, -shoulder);
-    pivot.y += this.aimBlend * 0.15 + up * 0.8;
+    const side = ctx.world ? ctx.world.raycastStatic(this.pivot, right, shoulder + 0.3) : null;
+    if (side) shoulder = Math.max(0, side.distance - 0.3);
+    this.shoulderNow += (shoulder - this.shoulderNow) * damp(side ? 20 : 6, dt);
+    const pivot = this.pivot.clone().addScaledVector(right, this.shoulderNow);
+    pivot.y += this.aimBlend * 0.08 + up * 0.6;
 
     // collision: pull the camera in front of terrain/props
     const back = look.clone().multiplyScalar(-1);
@@ -116,8 +123,8 @@ export class CameraRig {
     this.camera.position.copy(pos);
     this.camera.lookAt(pivot.clone().addScaledVector(look, 20));
     // don't let the hat fill the screen when the camera is squeezed against a wall
-    if (ctx.player) ctx.player.char.model.visible = pos.distanceTo(this.pivot) > 1.25;
-    const fov = 62 + this.fovBoost - this.aimBlend * 10;
+    if (ctx.player) ctx.player.char.model.visible = pos.distanceTo(this.pivot) > 0.9;
+    const fov = 66 + this.fovBoost - this.aimBlend * 12;
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov += (fov - this.camera.fov) * damp(6, dt);
       this.camera.updateProjectionMatrix();

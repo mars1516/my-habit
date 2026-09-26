@@ -542,7 +542,10 @@ export class Player {
     const surging = this.surge.active;
     const sprint = (this.sprintLock || sprintHeld) && hasInput && canRun;
 
-    let speed = surging ? SURGE_SPEED[this.surge.el] : sprint ? SPRINT_SPEED : RUN_SPEED;
+    // aiming (RMB): face the crosshair and strafe, like a shooter
+    const aiming = input.isDown('Mouse2') && !surging;
+    if (aiming) this.faceDirection(ctx.cam.forward(new THREE.Vector3()), 0.12);
+    let speed = surging ? SURGE_SPEED[this.surge.el] : aiming ? 4.2 : sprint ? SPRINT_SPEED : RUN_SPEED;
     if (this.exhausted) speed = 2.6;
     if (this.castSlow > 0) speed *= 0.5;
     if (this.status.frozen > 0) speed *= 0.3;
@@ -581,7 +584,13 @@ export class Player {
     // animation: playback rate follows ground speed so the feet don't slide
     const hs = Math.hypot(this.vel.x, this.vel.z);
     const scale = this.char.model.scale.x;
-    if (surging && hs > 3) {
+    const mi = this.moveInput;
+    if (aiming && hs > 0.4) {
+      if (mi.y > 0.5) this.char.play('Running_A', { speed: locoRate('Running_A', hs, scale) });
+      else if (mi.y < -0.5) this.char.play('Walking_Backwards', { speed: 1.25 });
+      else if (mi.x > 0) this.char.play('Running_Strafe_Right', { speed: 0.9 });
+      else this.char.play('Running_Strafe_Left', { speed: 0.9 });
+    } else if (surging && hs > 3) {
       const el2 = this.surge.el;
       if (el2 === 'ice' || el2 === 'kinesis') this.char.play('Running_A', { speed: Math.min(2.6, locoRate('Running_A', hs, scale)) });
       else this.char.play('Running_B', { speed: 0.35, fade: 0.25 });

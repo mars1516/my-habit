@@ -19,7 +19,7 @@ let i = 0;
 for (const js of steps) {
   const r = await page.evaluate(`(async () => { ${js} })()`);
   if (r !== undefined) console.log(`eval[${i}]:`, JSON.stringify(r));
-  await page.screenshot({ path: out.replace('.png', `-${i}.png`) });
+  await page.screenshot({ path: out.replace('.png', `-${i}.png`), timeout: 120000 });
   i++;
 }
 const skip = ['toNonIndexed', '[vite]', 'GPU stall', 'Automatic fallback'];

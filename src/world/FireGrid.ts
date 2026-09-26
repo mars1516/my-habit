@@ -10,8 +10,8 @@ interface Burning {
   energy: number;
 }
 
-/** Default spread budget of a new fire (~5 cells = 10 m with no wind). */
-const IGNITE_ENERGY = 4.5;
+/** Default spread budget of a new fire (~2-3 cells = 4-6 m with no wind). */
+const IGNITE_ENERGY = 2.4;
 
 const MAX_BURNING = 1800;
 const TICK = 0.12;
@@ -53,6 +53,7 @@ export class FireGrid {
   igniteCell(i: number, energy = IGNITE_ENERGY) {
     if (!this.canBurn(i) || this.burning.size >= MAX_BURNING) return false;
     this.burning.set(i, { t: 0, dur: 2.2 + Math.random() * 2.2, energy });
+    ctx.terrain.setBurning(i, 255);
     return true;
   }
 
@@ -87,7 +88,10 @@ export class FireGrid {
         const ix = cx + dx, iz = cz + dz;
         if (ix < 0 || iz < 0 || ix >= RES || iz >= RES) continue;
         const i = iz * RES + ix;
-        if (this.burning.delete(i)) n++;
+        if (this.burning.delete(i)) {
+          n++;
+          ctx.terrain.setBurning(i, 0);
+        }
         if (wetSeconds > 0) this.wetUntil.set(i, ctx.time + wetSeconds);
       }
     if (n > 0) {
@@ -156,14 +160,15 @@ export class FireGrid {
           if (!this.canBurn(j)) continue;
           const len = Math.hypot(dx, dz);
           const align = (dx * wind.x + dz * wind.y) / len;
-          const p = 0.06 * this.fuel(j) * (1 + align * 0.9) * (len > 1 ? 0.7 : 1);
+          const p = 0.05 * this.fuel(j) * (1 + align * 0.8) * (len > 1 ? 0.6 : 1);
           // downwind hops are cheap, upwind ones expensive
-          const cost = (1.05 - align * 0.5) * len;
+          const cost = (1.1 - align * 0.45) * len;
           if (Math.random() < p) toIgnite.push([j, b.energy - cost]);
         }
       }
       for (const i of done) {
         this.burning.delete(i);
+        ctx.terrain.setBurning(i, 0);
         ctx.terrain.setBurnt(i, 255);
         this.scorched.set(i, 255);
       }
@@ -212,22 +217,28 @@ export class FireGrid {
   private visuals(dt: number) {
     const n = this.burning.size;
     if (n === 0) return;
-    const rate = Math.min(7, 2600 / n); // flame particles per cell per second
+    // stylised flame tongues licking up from each burning cell (Zelda-like grass fire)
+    const rate = Math.min(9, 1500 / n);
     let li = 0;
-    for (const i of this.burning.keys()) {
-      if (Math.random() < rate * dt) {
+    for (const [i, b] of this.burning) {
+      const life = 1 - b.t / b.dur;
+      const k = Math.min(1, b.t * 3) * Math.min(1, life * 2.5); // grow, then die down
+      if (Math.random() < rate * dt * (0.4 + k)) {
         const c = ctx.terrain.cellCenter(i, this.tmp);
-        c.x += (Math.random() - 0.5) * CELL;
-        c.z += (Math.random() - 0.5) * CELL;
-        c.y = ctx.terrain.heightAt(c.x, c.z) + 0.2;
-        ctx.particles.emit({ pos: c, vel: new THREE.Vector3(ctx.wind.x * 0.8, 2.4, ctx.wind.y * 0.8), spread: 0.6, life: [0.4, 0.8], size: [1.3, 0.15], color: '#ffd060', color2: '#ff2800' });
-        if (Math.random() < 0.12)
-          ctx.particles.emit({ pos: c.clone().setY(c.y + 1), vel: new THREE.Vector3(ctx.wind.x * 1.5, 2.2, ctx.wind.y * 1.5), spread: 0.5, life: [1.5, 2.8], size: [1.2, 3.2], alpha: [0.28, 0], color: '#3b3533', additive: false, drag: 0.6 });
-        if (Math.random() < 0.05) ctx.particles.emit({ pos: c, vel: new THREE.Vector3(0, 5, 0), spread: 2, life: [0.8, 1.6], size: [0.18, 0.05], color: '#ffae40', gravity: -1 });
+        c.x += (Math.random() - 0.5) * CELL * 1.1;
+        c.z += (Math.random() - 0.5) * CELL * 1.1;
+        // flames lick up from the grass tips, not hidden beneath them
+        c.y = ctx.terrain.heightAt(c.x, c.z) + 0.2 + this.fuel(i) * 0.35;
+        const s = 0.7 + k * 0.75 + Math.random() * 0.35;
+        ctx.particles.emit({ pos: c, vel: new THREE.Vector3(ctx.wind.x * 0.5, 1.3 + k, ctx.wind.y * 0.5), spread: 0.25, life: [0.35, 0.6], size: [s, s * 0.35], alpha: [0.95, 0.1], color: '#ffb43a', color2: '#ff3c10', shape: 'flame', drag: 0.5 });
+        if (Math.random() < 0.18)
+          ctx.particles.emit({ pos: c.clone().setY(c.y + 0.5), vel: new THREE.Vector3(ctx.wind.x * 0.6, 3.2, ctx.wind.y * 0.6), spread: 1.4, life: [0.6, 1.3], size: [0.1, 0.03], color: '#ffd070', color2: '#ff5a10', gravity: -0.6 });
+        if (Math.random() < 0.06)
+          ctx.particles.emit({ pos: c.clone().setY(c.y + 1.3), vel: new THREE.Vector3(ctx.wind.x * 1.2, 1.8, ctx.wind.y * 1.2), spread: 0.4, life: [1.2, 2.2], size: [0.7, 2.2], alpha: [0.18, 0], color: '#5a504a', additive: false, drag: 0.6 });
       }
       if (li < 2 && Math.random() < dt * 1.5) {
         li++;
-        ctx.lights.flash(ctx.terrain.cellCenter(i, this.tmp).add(new THREE.Vector3(0, 1.5, 0)), '#ff7a28', 25, 16, 0.5);
+        ctx.lights.flash(ctx.terrain.cellCenter(i, this.tmp).add(new THREE.Vector3(0, 1.2, 0)), '#ff7a28', 18, 12, 0.5);
       }
     }
     this.soundTimer -= dt;

@@ -33,7 +33,8 @@ function inRange(p: Prop, hit: ElementHit, extra = 0.8) {
 }
 
 function flame(pos: THREE.Vector3, scale = 1) {
-  ctx.particles.emit({ pos, posSpread: 0.15 * scale, vel: new THREE.Vector3(ctx.wind.x * 0.3, 1.8 * scale, ctx.wind.y * 0.3), spread: 0.35 * scale, life: [0.3, 0.6], size: [0.8 * scale, 0.08], color: '#ffd068', color2: '#ff3a08' });
+  ctx.particles.emit({ pos, posSpread: 0.12 * scale, vel: new THREE.Vector3(ctx.wind.x * 0.3, 1.5 * scale, ctx.wind.y * 0.3), spread: 0.2 * scale, life: [0.3, 0.55], size: [0.85 * scale, 0.3 * scale], alpha: [1, 0.1], color: '#ffb83c', color2: '#ff3c10', shape: 'flame' });
+  if (Math.random() < 0.25) ctx.particles.emit({ pos, posSpread: 0.1 * scale, vel: new THREE.Vector3(0, 2.5 * scale, 0), spread: 0.8, life: [0.5, 1], size: [0.08, 0.02], color: '#ffd070', gravity: -0.5 });
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +670,54 @@ const beamMat = (color: string) =>
     side: THREE.DoubleSide,
     fog: false,
   });
+
+/**
+ * A breath-of-the-wild style wind vent: a stone ring in the ground that blows a
+ * permanent column of rising air. Glide into it to soar. Optionally dormant until a
+ * puzzle signal fires.
+ */
+export class WindVent extends Prop {
+  active = false;
+  private t = 0;
+  constructor(pos: THREE.Vector3, signal?: string, private height = 48) {
+    super();
+    this.pos.copy(pos);
+    this.radius = 3;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.45, 6, 16).rotateX(Math.PI / 2), STONE);
+    ring.position.copy(pos).add(new THREE.Vector3(0, 0.15, 0));
+    ring.receiveShadow = true;
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(2.3, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: '#1b2a2a' }));
+    hole.position.copy(pos).add(new THREE.Vector3(0, 0.08, 0));
+    ctx.scene.add(ring, hole);
+    ctx.terrain.clearGrass(pos.x, pos.z, 3);
+    if (!signal) this.activate();
+    else ctx.props.on(signal, () => this.activate());
+  }
+
+  activate() {
+    if (this.active) return;
+    this.active = true;
+    ctx.world.addUpdraft(this.pos, 3.4, this.height, 78, Infinity);
+  }
+
+  override update(dt: number) {
+    if (!this.active) return;
+    this.t += dt;
+    const dsq = this.pos.distanceToSquared(ctx.player.pos);
+    if (dsq > 160 * 160) return;
+    // swirling streaks racing up the column
+    const n = dsq < 60 * 60 ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 2.6;
+      const p = this.pos.clone().add(new THREE.Vector3(Math.cos(a) * r, 0.3, Math.sin(a) * r));
+      ctx.particles.emit({ pos: p, vel: new THREE.Vector3(-Math.sin(a) * 2, 13 + Math.random() * 6, Math.cos(a) * 2), spread: 0.6, life: [1.2, 2.2], size: [0.35, 0.8], alpha: [0.65, 0], color: '#f0fff8', color2: '#9ff5d8', drag: 0.2 });
+    }
+    if (Math.random() < dt * 3) {
+      const p = this.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * 3, 0.5, (Math.random() - 0.5) * 3));
+      ctx.particles.emit({ pos: p, vel: new THREE.Vector3(0, 9, 0), spread: 1.5, life: [1.5, 2.5], size: [0.25, 0.25], color: '#9ccf5a', additive: false, alpha: [0.9, 0], drag: 0.3 });
+    }
+  }
+}
 
 export class Beacon extends Prop {
   lit = false;

@@ -12,8 +12,8 @@ export class Grass {
   uniforms: Record<string, THREE.IUniform>;
 
   constructor(terrain: Terrain, quality: 'low' | 'medium' | 'high') {
-    const spacing = quality === 'high' ? 0.24 : quality === 'medium' ? 0.3 : 0.45;
-    const extent = quality === 'high' ? 80 : quality === 'medium' ? 64 : 48;
+    const spacing = quality === 'high' ? 0.17 : quality === 'medium' ? 0.21 : 0.32;
+    const extent = quality === 'high' ? 76 : quality === 'medium' ? 60 : 44;
     const n = Math.floor(extent / spacing);
 
     // blade: 3 segments, 7 verts
@@ -59,6 +59,7 @@ export class Grass {
       uTime: { value: 0 },
       uPlayer: { value: new THREE.Vector3() },
       uWind: { value: new THREE.Vector2(1, 0.3) },
+      uBlast: { value: new THREE.Vector4(0, 0, -100, 0) },
       uBase: { value: new THREE.Color('#3f8a2c') },
       uTip: { value: new THREE.Color('#b9dc62') },
     };
@@ -73,9 +74,9 @@ export class Grass {
           attribute vec2 aOffset;
           uniform sampler2D uHeight; uniform sampler2D uMask; uniform sampler2D uColor; uniform float uNight;
           uniform float uWorld; uniform float uRes; uniform vec2 uCenter; uniform float uSpacing; uniform float uExtent;
-          uniform float uTime; uniform vec3 uPlayer; uniform vec2 uWind;
+          uniform float uTime; uniform vec3 uPlayer; uniform vec2 uWind; uniform vec4 uBlast;
           uniform vec3 uBase; uniform vec3 uTip;
-          varying float vT; varying vec3 vGrassCol;
+          varying float vT; varying vec3 vGrassCol; varying float vWave; varying float vBurn;
           float gh(vec2 xz){
             vec2 g = (xz + uWorld*0.5) / uWorld * uRes;
             ivec2 i = ivec2(floor(g)); vec2 f = fract(g);
@@ -113,13 +114,24 @@ export class Grass {
           float t = position.y;
           vT = t;
           // wind sway
+          // Breath of the Wild style wind waves: broad bands rolling across the meadow
+          vec2 wdir = normalize(uWind + 0.0001);
+          float wave = sin(dot(wxz, wdir) * 0.16 - uTime * 2.3 + sin(dot(wxz, vec2(-wdir.y, wdir.x)) * 0.05) * 2.0);
+          wave = smoothstep(0.2, 1.0, wave);
           float gust = sin(uTime*1.7 + wxz.x*0.21 + wxz.y*0.13) * 0.5 + sin(uTime*3.1 + wxz.x*0.7) * 0.2;
-          vec2 bend = uWind * (0.18 + gust*0.22) * t * t * height;
+          vec2 bend = uWind * (0.16 + gust*0.16 + wave*0.55) * t * t * height;
+          vWave = wave;
           // push away from the player
           vec2 away = wxz - uPlayer.xz;
           float pd = length(away);
           float push = (1.0 - smoothstep(0.2, 1.4, pd)) * step(abs(uPlayer.y - gh(wxz)), 1.6);
           bend += normalize(away + 0.0001) * push * 0.55 * t * height;
+          // wind blast: an expanding ring that flattens the grass outward
+          vec2 fromB = wxz - uBlast.xy;
+          float bd = length(fromB);
+          float band = smoothstep(uBlast.z - 5.0, uBlast.z - 0.5, bd) * (1.0 - smoothstep(uBlast.z - 0.5, uBlast.z + 1.0, bd));
+          float inside = (1.0 - smoothstep(uBlast.z * 0.9, uBlast.z + 1.0, bd)) * 0.35;
+          bend += normalize(fromB + 0.0001) * (band + inside) * uBlast.w * t * height * 1.6;
           transformed.xz += bend;
           transformed.y -= length(bend) * 0.35;
           transformed.xz += wxz;
@@ -130,12 +142,28 @@ export class Grass {
           // painterly patches: large soft areas drift yellow-green / blue-green
           float patchN = sin(wxz.x*0.043 + sin(wxz.y*0.031)*2.0) * sin(wxz.y*0.037 + sin(wxz.x*0.029)*2.0);
           tint *= mix(vec3(0.92, 1.0, 1.04), vec3(1.1, 1.05, 0.82), patchN*0.5+0.5);
-          vGrassCol = mix(ground * 0.78, ground * 1.22 + vec3(0.05,0.06,0.0), t) * tint;
-          vGrassCol = mix(vGrassCol, vec3(0.12,0.1,0.08), burnt);`,
+          // the base melts into the ground colour so blades never read as dark holes
+          vGrassCol = mix(ground * 0.97, ground * 1.28 + vec3(0.07,0.08,0.0), t*t) * mix(vec3(1.0), tint, t);
+          vGrassCol = mix(vGrassCol, vec3(0.12,0.1,0.08), burnt);
+          vBurn = mask.a * t;`,
         );
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <shadowmap_vertex>',
+        `{
+          // one shadow value per blade (sampled at its root): no stripes of self-shadowing
+          vec4 bladeWP = worldPosition;
+          worldPosition = vec4(wxz.x, gh(wxz) + 0.25, wxz.y, 1.0);
+          #include <shadowmap_vertex>
+          worldPosition = bladeWP;
+        }`,
+      );
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying float vT; varying vec3 vGrassCol;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vGrassCol * (0.78 + vT*0.32);')
+        .replace('#include <common>', '#include <common>\nvarying float vT; varying vec3 vGrassCol; varying float vWave; varying float vBurn;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vGrassCol * (0.95 + vT*0.1) + vec3(0.05, 0.06, 0.02) * vWave * vT;')
+        // blades caught in the flames glow from within
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.36, 0.06) * vBurn * 1.3;')
+        // tree shadows on grass stay soft: grass is never crushed to black
+        .replace('#include <lights_fragment_begin>', THREE.ShaderChunk.lights_fragment_begin.replaceAll('directionalLightShadow.shadowIntensity', 'directionalLightShadow.shadowIntensity * 0.6'))
         // blades are lit like the ground: never flip the up-normal on back faces
         .replace('normal *= faceDirection;', '');
     };
@@ -145,8 +173,26 @@ export class Grass {
     this.mesh.castShadow = false;
   }
 
+  private blastT = -1;
+  private blastMax = 0;
+  /** Flatten the grass with an expanding ring (wind blast). */
+  blast(center: THREE.Vector3, radius: number) {
+    const b = this.uniforms.uBlast.value as THREE.Vector4;
+    b.set(center.x, center.z, 0, 1);
+    this.blastT = 0;
+    this.blastMax = radius;
+  }
+
   update(dt: number, center: THREE.Vector3, player: THREE.Vector3, windDir: THREE.Vector2, night: number) {
     this.uniforms.uTime.value += dt;
+    if (this.blastT >= 0) {
+      this.blastT += dt;
+      const b = this.uniforms.uBlast.value as THREE.Vector4;
+      const k = Math.min(1, this.blastT / 0.45);
+      b.z = this.blastMax * (1 - Math.pow(1 - k, 2)) + 1;
+      b.w = Math.max(0, 1 - Math.max(0, this.blastT - 0.3) / 1.2);
+      if (b.w <= 0) this.blastT = -1;
+    }
     (this.uniforms.uCenter.value as THREE.Vector2).set(center.x, center.z);
     (this.uniforms.uPlayer.value as THREE.Vector3).copy(player);
     (this.uniforms.uWind.value as THREE.Vector2).copy(windDir);

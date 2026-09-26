@@ -455,7 +455,7 @@ export class UI {
       <b>원소 상호작용</b><br>
       🔥 화염: 풀과 나무를 태운다 · 화로/모닥불 점화 · 얼음 녹이기 · 불타는 풀 위는 상승 기류<br>
       ❄️ 빙결: 물 위를 얼려 길 만들기 · 빙주로 높은 곳 오르기 · 불 끄기 · 적 빙결<br>
-      🌪️ 바람: 물체·적 밀쳐내기 · 풍차 돌리기 · 불을 바람 방향으로 번지게 · 상승 기류<br>
+      🌪️ 바람: 물체·적 밀쳐내기 · 풍차 돌리기 · 불을 바람 방향으로 번지게 · E 폭풍 파동으로 주변을 크게 밀쳐내기 · 솟구치는 바람 구멍을 타고 활공<br>
       ⚡ 번개: 연쇄 공격 · 번개 수정 활성화 · 물/젖은 적에게 감전 · 금 간 바위 파괴(낙뢰)<br>
       ✋ 염동력: 상자·바위·돌 블록 옮기기 · 던지기 · 발판 퍼즐<br>
       <b>원소 질주</b> — 🔥 발밑 불꽃으로 활주하며 풀을 그을림 · ❄️ 걸음마다 눈꽃 결정, 물 위도 얼리며 달림 · 🌪️ 바람을 타고 물 위까지 미끄러짐 · ⚡ 번개를 두르고 스치는 적을 감전 · ✋ 세상이 느려지며 잔상을 남기는 산데비스탄<br>
@@ -1115,8 +1115,10 @@ export class UI {
     if (lp) this.lockEl.style.transform = `translate(${lp.x}px, ${lp.y}px) translate(-50%, -50%) rotate(${ctx.time * 60}deg)`;
 
     // crosshair
-    const aiming = ctx.input.isDown('Mouse2') || ctx.skills.selected === 'kinesis';
-    this.crosshair.classList.toggle('on', aiming && this.screen === 'none');
+    // over-the-shoulder camera: the reticle is always up while playing
+    const aiming = ctx.input.isDown('Mouse2');
+    this.crosshair.classList.toggle('on', this.screen === 'none' && ctx.player.alive);
+    this.crosshair.classList.toggle('aim', aiming);
     this.crosshair.style.setProperty('--c', ELEMENT_INFO[ctx.skills.selected].color);
 
     // floating numbers
