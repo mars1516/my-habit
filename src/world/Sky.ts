@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { clamp, smoothstep, lerp } from '../core/math';
-import { assets } from '../core/Assets';
 
 const skyVert = /* glsl */ `
 varying vec3 vDir;
@@ -88,7 +87,6 @@ export class Sky {
   night = 0;
   clouds = new THREE.Group();
   private cloudData: { obj: THREE.Object3D; speed: number }[] = [];
-  private cloudMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#bfc8d8', emissiveIntensity: 0.55, flatShading: true });
 
   constructor(private scene: THREE.Scene) {
     const geo = new THREE.SphereGeometry(4000, 32, 16);
@@ -126,26 +124,75 @@ export class Sky {
     scene.fog = this.fog;
   }
 
+  /** Soft cumulus puff painted on a canvas: bright tops, blue-grey undersides. */
+  private cloudTexture() {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 160;
+    const g = c.getContext('2d')!;
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const puffs: [number, number, number][] = [];
+    for (let i = 0; i < 18; i++) {
+      const x = 40 + rnd() * 176;
+      const base = 118 - Math.sin(((x - 40) / 176) * Math.PI) * (40 + rnd() * 30);
+      puffs.push([x, base + rnd() * 20, 18 + rnd() * 26 * Math.sin(((x - 40) / 176) * Math.PI + 0.3)]);
+    }
+    // shadowed underside first, lit tops on top
+    for (const pass of [0, 1]) {
+      for (const [x, y, r] of puffs) {
+        const grad = g.createRadialGradient(x, y - r * 0.35, r * 0.1, x, y, r);
+        if (pass === 0) {
+          grad.addColorStop(0, 'rgba(196,208,228,0.95)');
+          grad.addColorStop(1, 'rgba(176,190,214,0)');
+        } else {
+          grad.addColorStop(0, 'rgba(255,255,255,1)');
+          grad.addColorStop(0.55, 'rgba(250,252,255,0.85)');
+          grad.addColorStop(1, 'rgba(240,245,255,0)');
+        }
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(x, pass === 0 ? y + r * 0.25 : y - r * 0.12, r * (pass === 0 ? 1.05 : 0.9), 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    // flat-ish base
+    const fade = g.createLinearGradient(0, 110, 0, 150);
+    fade.addColorStop(0, 'rgba(0,0,0,0)');
+    fade.addColorStop(1, 'rgba(0,0,0,1)');
+    g.globalCompositeOperation = 'destination-out';
+    g.fillStyle = fade;
+    g.fillRect(0, 110, 256, 50);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }
+
   buildClouds() {
     const rng = (i: number) => (Math.sin(i * 91.7) * 43758.5453) % 1;
-    for (let i = 0; i < 46; i++) {
-      const obj = assets.env(i % 3 === 0 ? 'cloud_small' : 'cloud_big');
-      obj.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) {
-          m.material = this.cloudMat;
-          m.castShadow = false;
-          m.receiveShadow = false;
-        }
-      });
-      const s = 14 + Math.abs(rng(i + 3)) * 22;
-      obj.scale.set(s, s * 0.8, s);
-      obj.position.set(rng(i) * 700, 200 + Math.abs(rng(i + 7)) * 90, rng(i + 13) * 700);
-      obj.rotation.y = rng(i + 21) * 6;
+    const tex = this.cloudTexture();
+    for (let i = 0; i < 42; i++) {
+      const obj = new THREE.Group();
+      const n = 2 + (Math.abs(rng(i + 40)) * 3) | 0;
+      const s = 90 + Math.abs(rng(i + 3)) * 110;
+      for (let j = 0; j < n; j++) {
+        const sp = new THREE.Sprite(this.cloudSpriteMat(tex));
+        sp.scale.set(s * (0.8 + Math.abs(rng(i * 7 + j)) * 0.5), s * 0.62, 1);
+        sp.position.set((j - (n - 1) / 2) * s * 0.45, Math.abs(rng(i * 3 + j)) * s * 0.12, rng(i * 5 + j) * s * 0.3);
+        obj.add(sp);
+      }
+      obj.position.set(rng(i) * 900, 230 + Math.abs(rng(i + 7)) * 120, rng(i + 13) * 900);
       this.clouds.add(obj);
       this.cloudData.push({ obj, speed: 2 + Math.abs(rng(i + 5)) * 3 });
     }
     this.scene.add(this.clouds);
+  }
+
+  private cloudMats: THREE.SpriteMaterial[] = [];
+  private cloudSpriteMat(tex: THREE.Texture) {
+    const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
+    this.cloudMats.push(m);
+    return m;
   }
 
   update(dt: number, focus: THREE.Vector3, camera: THREE.Camera, timeScale = 1) {
@@ -197,20 +244,23 @@ export class Sky {
     this.hemi.intensity = lerp(k0.hemiI, k1.hemiI, t) * (1 - oc * 0.3);
 
     this.fog.color.copy(u.uHorizon.value).lerp(new THREE.Color('#8a94a0'), oc * 0.6);
-    this.fog.near = lerp(160, 40, oc);
-    this.fog.far = lerp(1100, 420, oc);
+    // strong aerial perspective: distant hills melt into a blue haze
+    this.fog.near = lerp(70, 30, oc);
+    this.fog.far = lerp(900, 380, oc);
 
     this.mesh.position.copy(camera.position);
 
     // clouds drift and wrap around the focus
-    this.cloudMat.emissive.copy(u.uHorizon.value).lerp(new THREE.Color('#ffffff'), 0.4).multiplyScalar(0.55 * (1 - this.night * 0.8));
-    this.cloudMat.color.set('#ffffff').lerp(new THREE.Color('#7d8796'), oc);
+    // clouds pick up the sky: warm at dawn/dusk, grey when overcast, dim at night
+    const cc = new THREE.Color('#ffffff').lerp(u.uSunColor.value, 0.35).lerp(new THREE.Color('#8d96a4'), oc * 0.8);
+    cc.multiplyScalar(1 - this.night * 0.86);
+    for (const m of this.cloudMats) m.color.copy(cc);
     for (const c of this.cloudData) {
       c.obj.position.x += c.speed * dt;
-      if (c.obj.position.x - focus.x > 700) c.obj.position.x -= 1400;
-      if (c.obj.position.x - focus.x < -700) c.obj.position.x += 1400;
-      if (c.obj.position.z - focus.z > 700) c.obj.position.z -= 1400;
-      if (c.obj.position.z - focus.z < -700) c.obj.position.z += 1400;
+      if (c.obj.position.x - focus.x > 900) c.obj.position.x -= 1800;
+      if (c.obj.position.x - focus.x < -900) c.obj.position.x += 1800;
+      if (c.obj.position.z - focus.z > 900) c.obj.position.z -= 1800;
+      if (c.obj.position.z - focus.z < -900) c.obj.position.z += 1800;
     }
   }
 

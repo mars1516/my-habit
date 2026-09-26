@@ -37,11 +37,23 @@ function buildTemple() {
   const c = ground(P.temple.x, P.temple.z);
   const y = c.y;
   ctx.terrain.clearGrass(c.x, c.z, 13.5);
-  // floor
+  // floor: weathered, warm grey stone rather than bright white tiles
+  const stoneTint = new Map<THREE.Material, THREE.Material>();
   for (let i = -2; i <= 2; i++)
     for (let j = -2; j <= 2; j++) {
       const t = place((i + j) % 3 === 0 ? 'floor_tile_rocks' : 'floor_tile', new THREE.Vector3(c.x + i * 4.8, y + 0.05, c.z + j * 4.8), 0, 1.2, { collide: false });
-      void t;
+      t.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const src = m.material as THREE.MeshStandardMaterial;
+        let tinted = stoneTint.get(src);
+        if (!tinted) {
+          const cl = src.clone();
+          cl.color.setRGB(0.62, 0.6, 0.55);
+          stoneTint.set(src, (tinted = cl));
+        }
+        m.material = tinted;
+      });
     }
   // walls: square courtyard with a gate on the north side
   const half = 13;
@@ -64,7 +76,7 @@ function buildTemple() {
   const b2 = ctx.props.add(new Brazier(new THREE.Vector3(c.x + 4.5, y, c.z - half + 3.5)));
   brazierPuzzle([b1, b2], 'temple_gate');
   sign(new THREE.Vector3(c.x + 3, y, c.z + 2), Math.PI, 'controls', '조작법',
-    'WASD 이동 · Shift 달리기 · Space 점프(공중에서 한 번 더: 활공) · C 회피\n좌클릭 기본 마법 · E 원소 스킬 · Q 원소 폭발 · 우클릭 조준 · 휠 클릭/T 적 주목\n1~5 원소 선택 · F 상호작용 · Tab 가방 · M 지도 · H 빠른 회복 · Esc 메뉴\n벽에 대고 앞으로 움직이면 기어오를 수 있다.');
+    'WASD 이동 · Shift 한 번: 달리기 고정(멈추면 해제) · Shift 3초 유지: 원소 질주\nSpace 점프(공중에서 한 번 더: 활공) · C 회피\n좌클릭 기본 마법 · E 누르고 있기: 원소 스킬 충전(1초마다 1단계, 최대 3단계) · Q 원소 폭발\n우클릭 조준 · 휠 클릭/T 적 주목 · 1~5 원소 선택 · F 상호작용 · Tab 가방 · M 지도 · H 빠른 회복 · Esc 메뉴\n벽에 대고 앞으로 움직이면 기어오를 수 있다.');
   sign(new THREE.Vector3(c.x - 3, y, c.z - half + 6), 0, 'gatehint', '낡은 석판', '「봉인문은 두 개의 불꽃을 기억한다.」\n\n화로를 향해 좌클릭으로 화염탄을 쏘아 불을 붙이자.');
   ctx.props.add(new Campfire(new THREE.Vector3(c.x - 6, y, c.z + 6), 'temple', true));
   // first chest waiting outside the gate

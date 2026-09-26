@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toon } from '../fx/Toon';
 import { ctx } from '../core/ctx';
 import { physics, RAPIER, G } from '../core/Physics';
 import { assets } from '../core/Assets';
@@ -9,9 +10,9 @@ import { Prop, DynamicProp, ICE_MAT } from './Props';
 import { ITEMS } from './items';
 import { culler } from '../core/Culler';
 
-export const STONE = new THREE.MeshStandardMaterial({ color: '#b3ab9d', roughness: 0.95, flatShading: true });
-export const DARK_STONE = new THREE.MeshStandardMaterial({ color: '#7a746b', roughness: 0.95, flatShading: true });
-export const WOOD = new THREE.MeshStandardMaterial({ color: '#8a5a36', roughness: 0.9, flatShading: true });
+export const STONE = toon(new THREE.MeshStandardMaterial({ color: '#a8a092', roughness: 0.95, flatShading: true }), 0.15) as THREE.MeshStandardMaterial;
+export const DARK_STONE = toon(new THREE.MeshStandardMaterial({ color: '#7a746b', roughness: 0.95, flatShading: true }), 0.15) as THREE.MeshStandardMaterial;
+export const WOOD = toon(new THREE.MeshStandardMaterial({ color: '#8a5a36', roughness: 0.9, flatShading: true }), 0.15) as THREE.MeshStandardMaterial;
 const METAL = new THREE.MeshStandardMaterial({ color: '#4a4a52', roughness: 0.5, metalness: 0.6 });
 
 function staticBox(pos: THREE.Vector3, hx: number, hy: number, hz: number, rotY = 0, owner: Record<string, unknown> = { kind: 'structure', climbable: true }) {

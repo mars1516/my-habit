@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toon } from '../fx/Toon';
 import { ctx } from '../core/ctx';
 import { physics, RAPIER, G, groups } from '../core/Physics';
 import { events } from '../core/Events';
@@ -30,7 +31,7 @@ interface Pickup {
 
 function itemMesh(item: string): THREE.Object3D {
   const g = new THREE.Group();
-  const std = (color: string, emissive = '#000000', ei = 0) => new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, roughness: 0.6, flatShading: true });
+  const std = (color: string, emissive = '#000000', ei = 0) => toon(new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: ei, roughness: 0.6 }), 0.3);
   switch (item) {
     case 'apple':
     case 'roasted_apple': {

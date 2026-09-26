@@ -50,6 +50,7 @@ export class NPC {
     if (def.prop) this.char.attach('handslot.r', assets.env(def.prop));
     ctx.scene.add(this.char.root);
     this.char.play(def.idle ?? 'Idle', { fade: 0 });
+    if (!def.idle || def.idle === 'Idle' || def.idle.startsWith('Walking')) this.char.setPostPose(Character.relaxArms);
     const bd = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(this.pos.x, this.pos.y + 0.9, this.pos.z);
     this.body = physics.world.createRigidBody(bd);
     const c = physics.world.createCollider(RAPIER.ColliderDesc.capsule(0.5, 0.4).setCollisionGroups(groups(G.NPC, G.PLAYER | G.DYNAMIC)), this.body);

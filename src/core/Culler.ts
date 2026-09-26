@@ -120,3 +120,25 @@ export class ChunkedInstances {
     mesh.instanceColor.needsUpdate = true;
   }
 }
+
+/** Several ChunkedInstances (e.g. bark + leaves) driven by one set of handles. */
+export class MultiInstances {
+  group = new THREE.Group();
+  constructor(private parts: ChunkedInstances[]) {
+    for (const p of parts) this.group.add(p.group);
+  }
+  add(m: THREE.Matrix4, c?: THREE.Color) {
+    let h = 0;
+    for (const p of this.parts) h = p.add(m, c);
+    return h;
+  }
+  build() {
+    for (const p of this.parts) p.build();
+  }
+  setMatrix(handle: number, m: THREE.Matrix4) {
+    for (const p of this.parts) p.setMatrix(handle, m);
+  }
+  setColor(handle: number, c: THREE.Color) {
+    for (const p of this.parts) p.setColor(handle, c);
+  }
+}

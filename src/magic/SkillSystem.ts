@@ -41,7 +41,7 @@ export const SKILLS: Record<Element, SkillDef> = {
   kinesis: {
     name: '염동 포획', skillName: '투척 / 염동 파동', burstName: '중력 붕괴',
     basicCost: 4, basicCd: 0.25, skillCost: 12, skillCd: 2.5,
-    desc: '상자·바위·블록을 붙잡아 옮기고 던진다. 휠로 거리 조절, E로 투척.',
+    desc: '상자·바위·블록을 붙잡아 옮기고 던진다. 휠로 거리 조절, E를 누르고 있다 떼면 충전 투척.',
   },
 };
 

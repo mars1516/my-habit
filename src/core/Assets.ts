@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PngTexturePlugin } from './PngTexture';
 import { reproportionCharacter, reproportionClips } from './Proportions';
+import { toon, addOutlines } from '../fx/Toon';
 
 export type CharacterKey =
   | 'mage'
@@ -78,8 +79,9 @@ export class Assets {
     );
     CHARACTERS.forEach((c, i) => {
       const g = results[i];
-      this.prepareMaterials(g.scene);
+      this.prepareMaterials(g.scene, 0.45);
       reproportionCharacter(g.scene);
+      addOutlines(g.scene);
       this.chars.set(c, g);
     });
     this.clips.adventurer = results[CHARACTERS.length].animations;
@@ -91,7 +93,7 @@ export class Assets {
     this.envRoot = env.scene;
   }
 
-  private prepareMaterials(root: THREE.Object3D) {
+  private prepareMaterials(root: THREE.Object3D, rim = 0.18) {
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -107,6 +109,7 @@ export class Assets {
             sm.map.colorSpace = THREE.SRGBColorSpace;
             sm.map.anisotropy = 4;
           }
+          toon(sm, rim);
         }
       }
     });
@@ -118,8 +121,8 @@ export class Assets {
     const obj = SkeletonUtils.clone(g.scene);
     obj.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh) {
-        m.frustumCulled = false;
+      if (m.isSkinnedMesh) m.frustumCulled = false;
+      if ((m as THREE.Mesh).isMesh && !m.userData.outline) {
         // Each character gets its own material so it can be tinted (burn/freeze/hit flash).
         m.material = (m.material as THREE.Material).clone();
       }

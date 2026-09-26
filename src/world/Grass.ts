@@ -12,8 +12,8 @@ export class Grass {
   uniforms: Record<string, THREE.IUniform>;
 
   constructor(terrain: Terrain, quality: 'low' | 'medium' | 'high') {
-    const spacing = quality === 'high' ? 0.3 : quality === 'medium' ? 0.38 : 0.55;
-    const extent = quality === 'high' ? 84 : quality === 'medium' ? 72 : 52;
+    const spacing = quality === 'high' ? 0.24 : quality === 'medium' ? 0.3 : 0.45;
+    const extent = quality === 'high' ? 80 : quality === 'medium' ? 64 : 48;
     const n = Math.floor(extent / spacing);
 
     // blade: 3 segments, 7 verts
@@ -21,7 +21,7 @@ export class Grass {
     const segs = 3;
     for (let i = 0; i <= segs; i++) {
       const t = i / segs;
-      const w = 0.07 * (1 - t);
+      const w = 0.06 * (1 - t * t);
       if (i < segs) {
         bp.push(-w, t, 0, w, t, 0);
       } else bp.push(0, 1, 0);
@@ -104,11 +104,12 @@ export class Grass {
           float distC = length(wxz - uCenter);
           float fade = 1.0 - smoothstep(uExtent*0.32, uExtent*0.5, distC);
           float keep = step(r3, dens * 1.05) * fade;
-          float height = (0.35 + r1*0.55) * (0.55 + dens*0.75) * keep * (1.0 - burnt*0.92);
-          vec3 transformed = vec3(position.x, position.y * height, 0.0);
+          float height = (0.2 + r1*0.34) * (0.6 + dens*0.55) * keep * (1.0 - burnt*0.92);
+          // blades curve forward a little so the meadow reads soft, not spiky
+          vec3 transformed = vec3(position.x, position.y * height, position.y * position.y * height * 0.35);
           float ang = r2 * 6.2831;
           float ca = cos(ang), sa = sin(ang);
-          transformed.xz = vec2(transformed.x*ca, transformed.x*sa);
+          transformed.xz = vec2(transformed.x*ca - transformed.z*sa, transformed.x*sa + transformed.z*ca);
           float t = position.y;
           vT = t;
           // wind sway
@@ -125,13 +126,18 @@ export class Grass {
           transformed.y += gh(wxz) - 0.02;
           vec3 ground = texture2D(uColor, (wxz + uWorld*0.5) / uWorld * (uRes/(uRes+1.0)) + 0.5/(uRes+1.0)).rgb;
           ground = ground * ground; // stored as sqrt for precision
-          vec3 tint = mix(vec3(1.0), vec3(1.12, 1.06, 0.75), r1*0.7);
-          vGrassCol = mix(ground * 0.62, ground * 1.28 + vec3(0.03,0.05,0.0), t) * tint;
+          vec3 tint = mix(vec3(1.0), vec3(1.1, 1.06, 0.8), r1*0.6);
+          // painterly patches: large soft areas drift yellow-green / blue-green
+          float patchN = sin(wxz.x*0.043 + sin(wxz.y*0.031)*2.0) * sin(wxz.y*0.037 + sin(wxz.x*0.029)*2.0);
+          tint *= mix(vec3(0.92, 1.0, 1.04), vec3(1.1, 1.05, 0.82), patchN*0.5+0.5);
+          vGrassCol = mix(ground * 0.78, ground * 1.22 + vec3(0.05,0.06,0.0), t) * tint;
           vGrassCol = mix(vGrassCol, vec3(0.12,0.1,0.08), burnt);`,
         );
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying float vT; varying vec3 vGrassCol;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vGrassCol * (0.55 + vT*0.6);');
+        .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = vGrassCol * (0.78 + vT*0.32);')
+        // blades are lit like the ground: never flip the up-normal on back faces
+        .replace('normal *= faceDirection;', '');
     };
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.frustumCulled = false;

@@ -403,6 +403,7 @@ export class Player {
     if (this.state === 'climb') return this.climbPose;
     if (this.state === 'glide') return this.glidePose;
     if (this.surge.active && !(this.surge.el === 'ice' || this.surge.el === 'kinesis')) return this.skatePose;
+    if ((this.state === 'ground' || this.state === 'busy') && !this.char.upperActive) return Character.relaxArms;
     return null;
   }
 
@@ -637,7 +638,8 @@ export class Player {
       this.state = 'air';
       this.airTime = 0.3;
     }
-    this.fallStartY = this.pos.y + 100;
+    // the apex is tracked while rising (updateAir), so fall damage reflects the real drop
+    this.fallStartY = this.pos.y;
     this.char.play('Jump_Idle', { fade: 0.15 });
   }
 

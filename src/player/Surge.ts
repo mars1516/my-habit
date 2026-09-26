@@ -294,7 +294,8 @@ export class Surge {
       root.traverse((o) => {
         bones.push(o);
         const m = o as THREE.Mesh;
-        if (m.isMesh) {
+        if (m.userData.outline) m.visible = false;
+        else if (m.isMesh) {
           m.material = mat;
           m.castShadow = false;
           m.receiveShadow = false;
@@ -318,7 +319,7 @@ export class Surge {
       d.position.copy(s.position);
       d.quaternion.copy(s.quaternion);
       d.scale.copy(s.scale);
-      d.visible = s.visible;
+      d.visible = s.visible && !s.userData.outline;
     }
     // place in world space where the model currently is
     src.matrixWorld.decompose(g.root.position, g.root.quaternion, g.root.scale);

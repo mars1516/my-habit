@@ -72,6 +72,7 @@ export class Character {
   private onceDone: (() => void) | null = null;
   private upperDone: (() => void) | null = null;
   materials: THREE.MeshStandardMaterial[] = [];
+  outlines: THREE.Object3D[] = [];
   bones = new Map<string, THREE.Object3D>();
   currentName = '';
   /** Procedural pose layered over the animation each frame (climbing, gliding...). */
@@ -87,11 +88,12 @@ export class Character {
     this.root.add(this.model);
     this.model.traverse((o) => {
       if (o.name) this.bones.set(o.name, o);
-      const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh) {
+      const m = o as THREE.Mesh;
+      if (m.isMesh && !m.userData.outline) {
         m.castShadow = true;
         this.materials.push(m.material as THREE.MeshStandardMaterial);
       }
+      if (m.userData.outline) this.outlines.push(m);
     });
     this.mixer = new THREE.AnimationMixer(this.model);
     this.mixer.addEventListener('finished', (e) => {
@@ -213,6 +215,14 @@ export class Character {
     }
   }
 
+  /** The chibi clips hold the (now long) arms flared out; let them hang closer to the body. */
+  static relaxArms = (c: Character) => {
+    c.aim('upperarm.l', new THREE.Vector3(0.22, -1, 0.04), 0.5);
+    c.aim('upperarm.r', new THREE.Vector3(-0.22, -1, 0.04), 0.5);
+    c.aim('lowerarm.l', new THREE.Vector3(0.12, -1, 0.22), 0.3);
+    c.aim('lowerarm.r', new THREE.Vector3(-0.12, -1, 0.22), 0.3);
+  };
+
   setPostPose(fn: ((c: Character) => void) | null) {
     if (fn) this.postPose = fn;
     this.postTarget = fn ? 1 : 0;
@@ -251,6 +261,7 @@ export class Character {
   }
 
   setOpacity(a: number) {
+    for (const o of this.outlines) o.visible = a >= 0.99;
     for (const m of this.materials) {
       m.transparent = a < 1;
       m.opacity = a;

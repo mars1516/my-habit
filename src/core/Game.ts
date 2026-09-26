@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { ctx } from './ctx';
 import { physics } from './Physics';
 import { Input } from './Input';
@@ -31,6 +32,25 @@ import { AudioSys } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { culler } from './Culler';
 
+/** Final colour grade (display space): a touch more saturation, warm highlights, soft vignette. */
+const GRADE = {
+  uniforms: { tDiffuse: { value: null }, uSat: { value: 1.1 }, uVignette: { value: 0.28 }, uNight: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uSat; uniform float uVignette; uniform float uNight;
+    varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+      c.rgb = mix(vec3(l), c.rgb, uSat);
+      // warm highlights, cool shadows (split toning)
+      c.rgb += mix(vec3(-0.012, 0.0, 0.03), vec3(0.03, 0.014, -0.02), smoothstep(0.2, 0.85, l)) * (1.0 - uNight * 0.7);
+      vec2 d = vUv - 0.5;
+      c.rgb *= 1.0 - uVignette * smoothstep(0.35, 0.85, length(d * vec2(1.25, 1.0)));
+      gl_FragColor = c;
+    }`,
+};
+
 export type GameMode = 'loading' | 'title' | 'playing' | 'paused' | 'ui' | 'dead' | 'ending';
 
 export class Game {
@@ -39,6 +59,7 @@ export class Game {
   camera: THREE.PerspectiveCamera;
   composer?: EffectComposer;
   bloom?: UnrealBloomPass;
+  grade?: ShaderPass;
   mode: GameMode = 'loading';
   private last = performance.now();
   fps = 60;
@@ -134,9 +155,12 @@ export class Game {
     if (this.settings.bloom && q !== 'low') {
       this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: q === 'high' ? 4 : 2 }));
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.35, 0.5, 0.92);
+      // gentle bloom: only genuinely hot pixels (spells, fire, sun glints) glow
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.45, 0.97);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
+      this.grade = new ShaderPass(GRADE);
+      this.composer.addPass(this.grade);
     }
     this.resize();
     // warm up shader programs so the first frames don't stutter
@@ -197,6 +221,7 @@ export class Game {
     }
     ctx.sky.update(dt, this.mode === 'title' ? this.camera.position : ctx.player.pos, this.camera, playing || this.mode === 'title' ? 1 : 0);
     this.renderer.toneMappingExposure = 1 + ctx.sky.night * 0.25;
+    if (this.grade) this.grade.uniforms.uNight.value = ctx.sky.night;
     ctx.water.update(dt, ctx.sky, this.camera);
     ctx.grass.update(dt, this.camera.position, ctx.player.pos, ctx.wind, ctx.sky.night);
     ctx.particles.update(playing || this.mode === 'title' ? dt * (0.35 + ctx.slowmo * 0.65) : 0);

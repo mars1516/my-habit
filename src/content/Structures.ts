@@ -223,12 +223,15 @@ export function statue(id: string, name: string, x: number, z: number, rotY: num
 const sealMat = (color: string) =>
   new THREE.ShaderMaterial({
     uniforms: { uColor: { value: new THREE.Color(color).multiplyScalar(1.4) }, uTime: { value: 0 }, uFade: { value: 1 } },
-    vertexShader: `varying vec2 vUv; varying vec3 vN; void main(){ vUv=uv; vN = normalize(normalMatrix*normal); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
-    fragmentShader: `uniform vec3 uColor; uniform float uTime; uniform float uFade; varying vec2 vUv; varying vec3 vN;
+    vertexShader: `varying vec2 vUv; varying vec3 vN; varying float vDist; void main(){ vUv=uv; vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vDist = -mv.z; gl_Position = projectionMatrix*mv;} `,
+    fragmentShader: `uniform vec3 uColor; uniform float uTime; uniform float uFade; varying vec2 vUv; varying vec3 vN; varying float vDist;
       void main(){ float hex = abs(sin(vUv.x*60.0 + sin(vUv.y*30.0)*0.5)) * abs(sin(vUv.y*28.0 + uTime*0.8));
         float rim = 1.0 - abs(vN.z);
-        float a = (0.12 + smoothstep(0.85, 1.0, hex)*0.35 + rim*0.35) * uFade;
+        float a = (0.1 + smoothstep(0.85, 1.0, hex)*0.35 + rim*0.3) * uFade;
         a *= 0.6 + 0.4*sin(uTime*2.0 + vUv.y*10.0);
+        // a veil that thins towards the top and melts into the haze far away
+        a *= (1.0 - smoothstep(0.35, 1.0, vUv.y)) * (0.4 + 0.6 * smoothstep(0.0, 0.08, vUv.y));
+        a *= 1.0 - smoothstep(60.0, 220.0, vDist) * 0.85;
         gl_FragColor = vec4(uColor, a); }`,
     transparent: true,
     blending: THREE.AdditiveBlending,

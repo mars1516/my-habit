@@ -113,7 +113,7 @@ export class Terrain {
   }
 
   /** Remove grass (and its fuel) around a structure footprint. */
-  clearGrass(x: number, z: number, r: number) {
+  clearGrass(x: number, z: number, r: number, keepInside = 0) {
     const cr = Math.ceil(r / CELL) + 1;
     const cx = Math.floor((x + HALF) / CELL), cz = Math.floor((z + HALF) / CELL);
     for (let dz = -cr; dz <= cr; dz++)
@@ -123,7 +123,7 @@ export class Terrain {
         const d = Math.hypot(dx, dz) * CELL;
         if (d > r + CELL) continue;
         const i = iz * RES + ix;
-        const keep = d > r ? 0.5 : 0;
+        const keep = d > r ? 0.5 : keepInside;
         this.grass[i] = Math.round(this.grass[i] * keep);
         this.maskData[i * 4] = this.grass[i];
       }
@@ -261,13 +261,14 @@ export class Terrain {
     mat.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
-        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed,1.0)).xyz;');
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNormal;')
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed,1.0)).xyz;\nvWNormal = normalize(mat3(modelMatrix) * objectNormal);');
       shader.fragmentShader = shader.fragmentShader
         .replace(
           '#include <common>',
           `#include <common>
           varying vec3 vWPos;
+          varying vec3 vWNormal;
           uniform sampler2D uMask;
           uniform float uWorld;
           float th(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -281,6 +282,14 @@ export class Terrain {
           vec4 mask = texture2D(uMask, muv);
           float n = tnoise(vWPos.xz*0.7)*0.5 + tnoise(vWPos.xz*0.13)*0.5;
           diffuseColor.rgb *= 0.9 + n*0.2;
+          // cliffs: layered rock strata with darker seams, painted rather than noisy
+          float steep = 1.0 - smoothstep(0.55, 0.82, normalize(vWNormal).y);
+          float warp = tnoise(vWPos.xz * 0.08) * 3.0 + tnoise(vWPos.xz * 0.31) * 0.6;
+          float layer = fract(vWPos.y * 0.45 + warp);
+          float seam = smoothstep(0.0, 0.08, layer) * (1.0 - smoothstep(0.9, 1.0, layer));
+          vec3 rock = diffuseColor.rgb * (0.78 + 0.28 * floor(layer * 3.0) / 3.0);
+          rock *= 0.62 + 0.38 * seam;
+          diffuseColor.rgb = mix(diffuseColor.rgb, rock, steep);
           float burnt = mask.g;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13,0.11,0.1) + n*0.05, burnt*0.85);
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb*vec3(0.75,0.8,0.9), mask.b*0.5);`,

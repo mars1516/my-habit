@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ctx } from '../core/ctx';
 import { assets } from '../core/Assets';
 import { physics, RAPIER, G } from '../core/Physics';
 import { hash2, clamp, mulberry32 } from '../core/math';
 import { HALF, biomeAt, roadDistance, isFlattened, waterLevelAt, fbm, P } from './WorldGen';
 import { events } from '../core/Events';
-import { ChunkedInstances } from '../core/Culler';
+import { ChunkedInstances, MultiInstances } from '../core/Culler';
+import { foliageMaterial, barkMaterial, oakParts, pineParts, bushParts } from './Foliage';
 
 export type TreeType = 'pine' | 'pine2' | 'oak' | 'bush' | 'drybush';
 
@@ -28,88 +28,22 @@ export interface Tree {
   shake: number;
 }
 
-function sway(mat: THREE.Material, amount: number, uniforms: { uTime: { value: number } }) {
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        #ifdef USE_INSTANCING
-        float ph = instanceMatrix[3].x*0.21 + instanceMatrix[3].z*0.17;
-        #else
-        float ph = 0.0;
-        #endif
-        float hy = max(position.y, 0.0);
-        transformed.x += sin(uTime*1.4 + ph) * ${amount.toFixed(4)} * hy * hy;
-        transformed.z += cos(uTime*1.1 + ph*1.3) * ${(amount * 0.6).toFixed(4)} * hy * hy;`,
-      );
-  };
-  mat.customProgramCacheKey = () => 'sway' + amount;
-}
-
-function oakGeometry(rng: () => number, canopy: string, trunkCol = '#7a5234') {
-  const parts: THREE.BufferGeometry[] = [];
-  const trunk = new THREE.CylinderGeometry(0.22, 0.4, 3.4, 7, 1).translate(0, 1.7, 0).toNonIndexed();
-  paint(trunk, new THREE.Color(trunkCol), 0.08, rng);
-  parts.push(trunk);
-  const base = new THREE.Color(canopy);
-  const blobs: [number, number, number, number][] = [
-    [0, 4.3, 0, 1.9],
-    [0.9, 3.8, 0.4, 1.4],
-    [-0.8, 3.9, -0.3, 1.5],
-    [0.2, 5.0, -0.6, 1.3],
-    [-0.3, 3.6, 0.9, 1.2],
-  ];
-  for (const [x, y, z, r] of blobs) {
-    const g = new THREE.IcosahedronGeometry(r, 1);
-    const p = g.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < p.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(p, i);
-      v.multiplyScalar(0.85 + rng() * 0.3);
-      p.setXYZ(i, v.x, v.y, v.z);
-    }
-    g.translate(x, y, z);
-    const ng = g.toNonIndexed();
-    paint(ng, base, 0.12, rng);
-    parts.push(ng);
+function mergeHeads(a: THREE.BufferGeometry, b: THREE.BufferGeometry) {
+  const g = new THREE.BufferGeometry();
+  const ai = a.index!.array, bi = b.index!.array;
+  const n = a.attributes.position.count;
+  for (const key of ['position', 'normal', 'uv']) {
+    const x = a.attributes[key].array as Float32Array, y = b.attributes[key].array as Float32Array;
+    const out = new Float32Array(x.length + y.length);
+    out.set(x);
+    out.set(y, x.length);
+    g.setAttribute(key, new THREE.BufferAttribute(out, a.attributes[key].itemSize));
   }
-  const geo = mergeGeometries(parts);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-function bushGeometry(rng: () => number, color: string) {
-  const parts: THREE.BufferGeometry[] = [];
-  const base = new THREE.Color(color);
-  for (let i = 0; i < 4; i++) {
-    const r = 0.45 + rng() * 0.35;
-    const g = new THREE.IcosahedronGeometry(r, 0);
-    g.translate((rng() - 0.5) * 0.9, r * 0.8, (rng() - 0.5) * 0.9);
-    const ng = g.toNonIndexed();
-    paint(ng, base, 0.15, rng);
-    parts.push(ng);
-  }
-  const geo = mergeGeometries(parts);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-/** Per-face vertex colors with a little variation (flat-shaded look). */
-function paint(g: THREE.BufferGeometry, c: THREE.Color, vary: number, rng: () => number) {
-  const n = g.attributes.position.count;
-  const col = new Float32Array(n * 3);
-  for (let f = 0; f < n; f += 3) {
-    const k = 1 - vary + rng() * vary * 2;
-    for (let j = 0; j < 3; j++) {
-      col[(f + j) * 3] = c.r * k;
-      col[(f + j) * 3 + 1] = c.g * k;
-      col[(f + j) * 3 + 2] = c.b * k;
-    }
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  if (g.attributes.uv) g.deleteAttribute('uv');
+  // flower heads are lit from above like the grass
+  const nor = g.attributes.normal as THREE.BufferAttribute;
+  for (let i = 0; i < nor.count; i++) nor.setXYZ(i, 0, 1, 0);
+  g.setIndex([...Array.from(ai), ...Array.from(bi, (v) => v + n)]);
+  return g;
 }
 
 const TMP_M = new THREE.Matrix4();
@@ -122,7 +56,7 @@ const CHAR = new THREE.Color('#1d1a18');
 
 export class Vegetation {
   trees: Tree[] = [];
-  meshes = new Map<TreeType, ChunkedInstances>();
+  meshes = new Map<TreeType, MultiInstances>();
   stumps!: THREE.InstancedMesh;
   apples!: THREE.InstancedMesh;
   flowers: ChunkedInstances[] = [];
@@ -186,26 +120,32 @@ export class Vegetation {
     const counts: Record<TreeType, number> = { pine: 0, pine2: 0, oak: 0, bush: 0, drybush: 0 };
     for (const t of pending) counts[t.type]++;
 
-    const pineA = assets.merged('tree_a');
-    const pineB = assets.merged('tree_b');
-    const pineMatA = (pineA.material as THREE.MeshStandardMaterial).clone();
-    const pineMatB = pineMatA;
-    sway(pineMatA, 0.03, this.uniforms);
-    const oakMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    sway(oakMat, 0.006, this.uniforms);
-    const bushMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const leafMat = foliageMaterial(this.uniforms.uTime, 0.004);
+    const pineLeafMat = foliageMaterial(this.uniforms.uTime, 0.0025);
+    const bushMat = foliageMaterial(this.uniforms.uTime, 0.02);
+    const oakBark = barkMaterial(this.uniforms.uTime, 0.004);
+    const pineBark = barkMaterial(this.uniforms.uTime, 0.0025);
 
-    const make = (type: TreeType, geo: THREE.BufferGeometry, mat: THREE.Material) => {
+    const make = (type: TreeType, parts: [THREE.BufferGeometry, THREE.Material][]) => {
       const small = type === 'bush' || type === 'drybush';
-      const ci = new ChunkedInstances(geo, mat, { chunk: 96, castShadow: !small, colors: true, viewDist: small ? 260 : 700 });
+      const ci = new MultiInstances(
+        parts.map(([geo, mat]) => new ChunkedInstances(geo, mat, { chunk: 96, castShadow: !small, colors: true, viewDist: small ? 260 : 700 })),
+      );
       this.meshes.set(type, ci);
       this.group.add(ci.group);
     };
-    make('pine', pineA.geometry, pineMatA);
-    make('pine2', pineB.geometry, pineMatB);
-    make('oak', oakGeometry(rng, '#5c9e3a'), oakMat);
-    make('bush', bushGeometry(rng, '#4e8f36'), bushMat);
-    make('drybush', bushGeometry(rng, '#a58a4a'), bushMat);
+    const oak = oakParts(rng);
+    make('oak', [[oak.wood, oakBark], [oak.leaves, leafMat]]);
+    // conifers are authored ~9 m tall; their instance scale (5.5-8.5) came from the old unit models
+    const pines = [pineParts(rng), pineParts(rng)];
+    for (const p of pines) {
+      p.wood.scale(1 / 7, 1 / 7, 1 / 7);
+      p.leaves.scale(1 / 7, 1 / 7, 1 / 7);
+    }
+    make('pine', [[pines[0].wood, pineBark], [pines[0].leaves, pineLeafMat]]);
+    make('pine2', [[pines[1].wood, pineBark], [pines[1].leaves, pineLeafMat]]);
+    make('bush', [[bushParts(rng, '#4e8f36'), bushMat]]);
+    make('drybush', [[bushParts(rng, '#b0924e'), bushMat]]);
     void counts;
 
     const stump = assets.merged('tree_a_cut');
@@ -239,7 +179,7 @@ export class Vegetation {
       }
       for (let a = 0; a < t.apples; a++) {
         const ang = (a / 3) * Math.PI * 2 + t.rot;
-        const local = new THREE.Vector3(Math.cos(ang) * 1.6, 3.6 + (a % 2) * 0.7, Math.sin(ang) * 1.6).multiplyScalar(t.scale);
+        const local = new THREE.Vector3(Math.cos(ang) * 2.15, 3.7 + (a % 2) * 0.7, Math.sin(ang) * 2.15).multiplyScalar(t.scale);
         this.appleSlots.push({ tree, slot: a, local });
       }
     }
@@ -273,10 +213,36 @@ export class Vegetation {
   }
 
   private buildFlowers(rng: () => number) {
-    const colors = ['#ffffff', '#ffd84a', '#ff8fc8', '#b79bff', '#7fc8ff', '#ff6a5a'];
-    const head = new THREE.OctahedronGeometry(0.11, 0).translate(0, 0.32, 0);
-    const stem = new THREE.CylinderGeometry(0.012, 0.012, 0.32, 3, 1, true).translate(0, 0.16, 0);
-    const headMat = new THREE.MeshLambertMaterial({ color: '#ffffff', emissive: '#222222' });
+    const colors = ['#ffffff', '#ffe06a', '#ffa0d0', '#c7a8ff', '#8fd0ff', '#ff8a70'];
+    // petal texture: five soft petals around a warm centre (tinted per instance)
+    const c2 = document.createElement('canvas');
+    c2.width = c2.height = 64;
+    const g2 = c2.getContext('2d')!;
+    g2.translate(32, 32);
+    for (let i = 0; i < 5; i++) {
+      g2.save();
+      g2.rotate((i / 5) * Math.PI * 2);
+      g2.fillStyle = '#ffffff';
+      g2.beginPath();
+      g2.ellipse(0, -15, 9, 15, 0, 0, Math.PI * 2);
+      g2.fill();
+      g2.restore();
+    }
+    g2.fillStyle = '#ffd23a';
+    g2.beginPath();
+    g2.arc(0, 0, 7, 0, Math.PI * 2);
+    g2.fill();
+    const petalTex = new THREE.CanvasTexture(c2);
+    petalTex.colorSpace = THREE.SRGBColorSpace;
+    // a flower head is a flat disc tilted to the sky plus one upright card
+    const flat = new THREE.PlaneGeometry(0.26, 0.26).rotateX(-Math.PI / 2 + 0.35).translate(0, 0.3, 0);
+    const card = new THREE.PlaneGeometry(0.22, 0.22).translate(0, 0.3, 0);
+    const head = mergeHeads(flat, card);
+    const stem = new THREE.CylinderGeometry(0.01, 0.012, 0.3, 3, 1, true).translate(0, 0.15, 0);
+    const headMat = new THREE.MeshLambertMaterial({ map: petalTex, alphaTest: 0.5, side: THREE.DoubleSide, emissive: '#262626' });
+    headMat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('normal *= faceDirection;', '');
+    };
     const stemMat = new THREE.MeshLambertMaterial({ color: '#4c8a2e' });
     const heads = new ChunkedInstances(head, headMat, { chunk: 64, colors: true, viewDist: 130, receiveShadow: false });
     const stems = new ChunkedInstances(stem, stemMat, { chunk: 64, viewDist: 90, receiveShadow: false });
@@ -291,7 +257,7 @@ export class Vegetation {
       if (i < 0 || ctx.terrain.grass[i] < 120) continue;
       const y = ctx.terrain.heightAt(x, z);
       const s = 0.8 + rng() * 0.7;
-      TMP_M.compose(TMP_P.set(x, y, z), TMP_Q.identity(), TMP_S.setScalar(s));
+      TMP_M.compose(TMP_P.set(x, y, z), TMP_Q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * 6.28), TMP_S.setScalar(s));
       const ci = Math.floor((fbm(x * 0.05, z * 0.05, 1) * 0.5 + 0.5) * colors.length * 1.5 + rng() * 1.2) % colors.length;
       heads.add(TMP_M, c.set(colors[ci]));
       stems.add(TMP_M);
