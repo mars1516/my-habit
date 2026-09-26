@@ -31,6 +31,7 @@ import { Quests } from '../quests/Quests';
 import { AudioSys } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { culler } from './Culler';
+import { Ambient } from '../fx/Ambient';
 
 /** Final colour grade (display space): a touch more saturation, warm highlights, soft vignette. */
 const GRADE = {
@@ -60,6 +61,7 @@ export class Game {
   composer?: EffectComposer;
   bloom?: UnrealBloomPass;
   grade?: ShaderPass;
+  ambient?: Ambient;
   mode: GameMode = 'loading';
   private last = performance.now();
   fps = 60;
@@ -151,6 +153,7 @@ export class Game {
     ctx.audio = new AudioSys();
     ctx.ui = new UI(this);
     ctx.ui.respawn.copy(start);
+    this.ambient = new Ambient(this.scene);
 
     if (this.settings.bloom && q !== 'low') {
       this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: q === 'high' ? 4 : 2 }));
@@ -227,6 +230,7 @@ export class Game {
     ctx.particles.update(playing || this.mode === 'title' ? dt * (0.35 + ctx.slowmo * 0.65) : 0);
     ctx.lights.update(playing ? dt : 0);
     ctx.fx.update(playing ? dt : 0);
+    if (playing) this.ambient?.update(dt, ctx.player.pos);
     culler.update(dt, this.camera.position);
     ctx.ui.update(dt);
     ctx.audio.update(dt);
