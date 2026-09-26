@@ -11,6 +11,8 @@
 | ![호수](docs/frost.jpg) | ![활공](docs/glide.jpg) |
 | **빙결 질주 — 걸음마다 눈꽃** | **염동 질주 — 산데비스탄** |
 | ![빙결 질주](docs/surge_ice.jpg) | ![염동 질주](docs/sandevistan.jpg) |
+| **3단계 화염 폭발구** | **폭풍 파동** |
+| ![화염 폭발](docs/fireball.jpg) | ![폭풍 파동](docs/windblast.jpg) |
 
 ## 실행 방법
 
