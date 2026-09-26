@@ -93,6 +93,13 @@ export class Terrain {
     return Math.abs(x) < HALF - margin && Math.abs(z) < HALF - margin;
   }
 
+  /** Grass density 0..1 at a world point (0 where burnt or bare). */
+  grassAt(x: number, z: number) {
+    const i = this.cellIndex(x, z);
+    if (i < 0) return 0;
+    return this.getBurnt(i) > 40 ? 0 : this.grass[i] / 255;
+  }
+
   cellIndex(x: number, z: number) {
     const ix = Math.floor((x + HALF) / CELL), iz = Math.floor((z + HALF) / CELL);
     if (ix < 0 || iz < 0 || ix >= RES || iz >= RES) return -1;

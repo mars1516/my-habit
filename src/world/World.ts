@@ -74,7 +74,10 @@ export class World {
     const trees = ctx.veg.near(hit.pos.x, hit.pos.z, hit.radius + 0.5);
     switch (hit.element) {
       case 'fire':
-        if (!inWater) {
+        if (hit.kind === 'aura') {
+          // surges scorch their own trail; only brushing a tree sets it alight
+          for (const t of trees) if (Math.random() < 0.15 && Math.abs(t.y - hit.pos.y) < 4) ctx.veg.ignite(t, 1);
+        } else if (!inWater) {
           if (!ctx.weather?.raining || hit.kind === 'burst') ctx.fire.igniteCircle(hit.pos.x, hit.pos.z, Math.max(1.6, hit.radius * 0.8));
           for (const t of trees) if (Math.abs(t.y - hit.pos.y) < 8) ctx.veg.ignite(t);
         } else {
@@ -92,7 +95,7 @@ export class World {
         break;
       case 'lightning':
         if (inWater) this.electrifyWater(hit.pos, 9);
-        else if (Math.random() < (hit.kind === 'strike' ? 0.8 : 0.25)) {
+        else if (hit.kind !== 'aura' && Math.random() < (hit.kind === 'strike' ? 0.8 : 0.25)) {
           ctx.fire.igniteCircle(hit.pos.x, hit.pos.z, 1.5);
           for (const t of trees) if (Math.random() < 0.5) ctx.veg.ignite(t);
         }

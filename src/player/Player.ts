@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { ctx } from '../core/ctx';
 import { physics, RAPIER, G, groups } from '../core/Physics';
 import { clamp, damp, angleLerp, lerp } from '../core/math';
-import { Character } from './Character';
+import { Character, locoRate } from './Character';
+import { Surge, SURGE_COST, SURGE_HOLD, SURGE_SPEED } from './Surge';
 import { events } from '../core/Events';
 import { newStatus, type StatusState } from '../magic/Elements';
 import { waterLevelAt } from '../world/WorldGen';
@@ -10,11 +11,13 @@ import { waterLevelAt } from '../world/WorldGen';
 export type PState = 'ground' | 'air' | 'glide' | 'climb' | 'swim' | 'dodge' | 'dead' | 'busy';
 
 const RADIUS = 0.34;
-const HALF_H = 0.46;
+const HALF_H = 0.52;
 const CENTER_Y = HALF_H + RADIUS; // collider center above feet
-const CHEST = 1.05;
+const CHEST = 1.22;
 
 const UP = new THREE.Vector3(0, 1, 0);
+const RUN_SPEED = 5.2;
+const SPRINT_SPEED = 7.4;
 
 export class Player {
   char: Character;
@@ -59,6 +62,14 @@ export class Player {
   wings: THREE.Group;
   private wingOpen = 0;
   speedMul = 1;
+  /** Shift tapped: keep sprinting until the player stops. */
+  sprintLock = false;
+  /** Seconds Shift has been held while moving (elemental surge charge). */
+  shiftHold = 0;
+  private stillTime = 0;
+  surge: Surge;
+  private climbPhase = 0;
+  private fireProof = 0;
   hand = new THREE.Vector3();
   godMode = false;
 
@@ -87,6 +98,7 @@ export class Player {
     this.kcc.setCharacterMass(70);
 
     this.wings = this.buildWings();
+    this.surge = new Surge(this);
     this.char.play('Idle');
   }
 
@@ -141,7 +153,7 @@ export class Player {
       m.userData.side = side;
       group.add(m);
     }
-    group.position.set(0, 1.2, -0.28);
+    group.position.set(0, 1.4, -0.2);
     group.visible = false;
     this.char.root.add(group);
     return group;
@@ -318,6 +330,15 @@ export class Player {
         break;
     }
 
+    if (this.surge.active && this.state !== 'ground') this.endSurge();
+    if (this.surge.active) {
+      this.surge.update(dt, Math.hypot(this.vel.x, this.vel.z));
+      // riding your own flames doesn't burn
+      if (this.surge.el === 'fire') this.fireProof = 1.5;
+    }
+    this.fireProof = Math.max(0, this.fireProof - dt);
+    if (this.fireProof > 0) this.status.burning = 0;
+
     // enter swimming from any movement state
     if (['ground', 'air', 'glide', 'dodge'].includes(this.state) && submerged > 1.15) {
       this.enterSwim();
@@ -325,7 +346,7 @@ export class Player {
 
     // stamina regen
     this.staminaDelay -= dt;
-    const regenOK = (this.state === 'ground' || this.state === 'busy') && !(sprintHeld && hasInput && !this.exhausted);
+    const regenOK = (this.state === 'ground' || this.state === 'busy') && !this.surge.active;
     if (regenOK && this.staminaDelay <= 0) {
       this.stamina = Math.min(this.maxStamina, this.stamina + (this.exhausted ? 22 : 38) * dt);
       if (this.stamina >= this.maxStamina * 0.999) this.exhausted = false;
@@ -346,9 +367,11 @@ export class Player {
     // visuals
     this.char.root.position.copy(this.pos);
     this.char.root.rotation.y = this.yaw;
-    const tilt = this.state === 'swim' ? 0.9 * Math.min(1, this.vel.length() / 3) + 0.25 : this.state === 'glide' ? 0.45 : 0;
+    const surgeLean = this.surge.active ? (this.surge.el === 'ice' || this.surge.el === 'kinesis' ? 0.22 : 0.42) : 0;
+    const tilt = this.state === 'swim' ? 0.9 * Math.min(1, this.vel.length() / 3) + 0.25 : this.state === 'glide' ? 0.45 : surgeLean;
     this.char.model.rotation.x += (tilt - this.char.model.rotation.x) * damp(8, dt);
-    this.char.model.position.y = this.state === 'swim' ? 0.15 : 0;
+    const hover = this.surge.active && !(this.surge.el === 'ice' || this.surge.el === 'kinesis') ? 0.25 + Math.sin(ctx.time * 9) * 0.04 : 0;
+    this.char.model.position.y += ((this.state === 'swim' ? 0.15 : hover) - this.char.model.position.y) * damp(12, dt);
     this.wingOpen += ((this.state === 'glide' ? 1 : 0) - this.wingOpen) * damp(10, dt);
     this.wings.visible = this.wingOpen > 0.02;
     if (this.wings.visible) {
@@ -370,9 +393,58 @@ export class Player {
           color: '#aaffe8',
         });
     }
+    this.char.setPostPose(this.poseFor());
     this.char.update(dt);
     this.handWorld();
   }
+
+  // ---- procedural poses (model space: +X left, +Y up, +Z forward) ------------
+  private poseFor(): ((c: Character) => void) | null {
+    if (this.state === 'climb') return this.climbPose;
+    if (this.state === 'glide') return this.glidePose;
+    if (this.surge.active && !(this.surge.el === 'ice' || this.surge.el === 'kinesis')) return this.skatePose;
+    return null;
+  }
+
+  private climbPose = (c: Character) => {
+    const s = Math.sin(this.climbPhase);
+    const r = (s + 1) / 2; // right arm reaching up, left leg stepping up
+    const l = 1 - r;
+    const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    c.aim('upperarm.r', v(-0.45, 0.2, 0.55).lerp(v(-0.3, 1, 0.25), r));
+    c.aim('lowerarm.r', v(-0.1, 0.8, 0.6).lerp(v(-0.05, 1, 0.3), r));
+    c.aim('upperarm.l', v(0.45, 0.2, 0.55).lerp(v(0.3, 1, 0.25), l));
+    c.aim('lowerarm.l', v(0.1, 0.8, 0.6).lerp(v(0.05, 1, 0.3), l));
+    c.aim('upperleg.l', v(0.15, -1, 0.2).lerp(v(0.2, -0.35, 0.9), r));
+    c.aim('lowerleg.l', v(0, -1, -0.15).lerp(v(0, -1, 0.05), r));
+    c.aim('upperleg.r', v(-0.15, -1, 0.2).lerp(v(-0.2, -0.35, 0.9), l));
+    c.aim('lowerleg.r', v(0, -1, -0.15).lerp(v(0, -1, 0.05), l));
+  };
+
+  private glidePose = (c: Character) => {
+    const f = Math.sin(ctx.time * 3) * 0.08;
+    c.aim('upperarm.l', new THREE.Vector3(1, 0.25 + f, -0.25));
+    c.aim('lowerarm.l', new THREE.Vector3(1, 0.3 + f, -0.1));
+    c.aim('upperarm.r', new THREE.Vector3(-1, 0.25 + f, -0.25));
+    c.aim('lowerarm.r', new THREE.Vector3(-1, 0.3 + f, -0.1));
+    c.aim('upperleg.l', new THREE.Vector3(0.08, -1, -0.25));
+    c.aim('lowerleg.l', new THREE.Vector3(0, -1, -0.45));
+    c.aim('upperleg.r', new THREE.Vector3(-0.08, -1, -0.1));
+    c.aim('lowerleg.r', new THREE.Vector3(0, -1, -0.3));
+  };
+
+  /** Streamlined skating stance for the fire / wind / lightning surges. */
+  private skatePose = (c: Character) => {
+    const b = Math.sin(ctx.time * 7) * 0.05;
+    c.aim('upperarm.l', new THREE.Vector3(0.45, -0.55, -0.7));
+    c.aim('lowerarm.l', new THREE.Vector3(0.2, -0.3, -1));
+    c.aim('upperarm.r', new THREE.Vector3(-0.45, -0.55, -0.7));
+    c.aim('lowerarm.r', new THREE.Vector3(-0.2, -0.3, -1));
+    c.aim('upperleg.l', new THREE.Vector3(0.12, -1, 0.5 + b));
+    c.aim('lowerleg.l', new THREE.Vector3(0, -1, -0.15));
+    c.aim('upperleg.r', new THREE.Vector3(-0.12, -1, -0.55 - b));
+    c.aim('lowerleg.r', new THREE.Vector3(0, -1, -0.6));
+  };
 
   private applyStatusTint() {
     const s = this.status;
@@ -445,27 +517,57 @@ export class Player {
     this.yaw = angleLerp(this.yaw, target, damp(speed, dt));
   }
 
+  private startSurge() {
+    this.surge.start(ctx.skills.selected);
+  }
+
+  endSurge() {
+    this.surge.stop();
+    this.shiftHold = 0;
+  }
+
   private updateGround(dt: number, wish: THREE.Vector3, hasInput: boolean, sprintHeld: boolean) {
     const input = ctx.input;
-    const sprint = sprintHeld && hasInput && !this.exhausted && this.castSlow <= 0;
-    let speed = sprint ? 8.8 : 5.4;
+    // --- sprint: tap Shift to lock, stop moving to release; hold Shift to charge a surge ---
+    if (input.wasPressed('ShiftLeft') || input.wasPressed('ShiftRight')) this.sprintLock = true;
+    if (hasInput) this.stillTime = 0;
+    else if ((this.stillTime += dt) > 0.2) this.sprintLock = false;
+    const canRun = !this.exhausted && this.castSlow <= 0 && this.status.frozen <= 0;
+    this.shiftHold = sprintHeld && hasInput && canRun ? this.shiftHold + dt : 0;
+    const el = ctx.skills.selected;
+    if (!this.surge.active && this.shiftHold >= SURGE_HOLD && this.stamina > 10) this.startSurge();
+    else if (this.surge.active && (!sprintHeld || !canRun || this.surge.el !== el)) this.endSurge();
+    if (!this.surge.active && this.shiftHold > 0) this.surge.charging(this.shiftHold / SURGE_HOLD, el);
+    const surging = this.surge.active;
+    const sprint = (this.sprintLock || sprintHeld) && hasInput && canRun;
+
+    let speed = surging ? SURGE_SPEED[this.surge.el] : sprint ? SPRINT_SPEED : RUN_SPEED;
     if (this.exhausted) speed = 2.6;
     if (this.castSlow > 0) speed *= 0.5;
     if (this.status.frozen > 0) speed *= 0.3;
     speed *= this.speedMul;
-    if (sprint) this.useStamina(20 * dt);
+    if (surging && !this.useStamina(SURGE_COST * dt)) this.endSurge();
+    if (surging && this.stamina <= 0) this.endSurge();
 
     const target = wish.clone().multiplyScalar(hasInput ? speed : 0);
-    const k = damp(hasInput ? 12 : 16, dt);
+    const k = damp(hasInput ? (surging ? 5 : 12) : 16, dt);
     this.vel.x += (target.x - this.vel.x) * k;
     this.vel.z += (target.z - this.vel.z) * k;
-    this.vel.y = -3;
-    this.faceTowards(hasInput ? wish : new THREE.Vector3(), dt);
-    ctx.cam.fovBoost += ((sprint ? 6 : 0) - ctx.cam.fovBoost) * damp(4, dt);
+    // hug the ground at speed instead of launching off every crest
+    this.vel.y = surging ? -14 : -3;
+    this.faceTowards(hasInput ? wish : new THREE.Vector3(), dt, surging ? 7 : 12);
+    ctx.cam.fovBoost += ((surging ? 16 : sprint ? 6 : 0) - ctx.cam.fovBoost) * damp(4, dt);
 
     const m = this.move(dt);
+    // wind skims across water
+    const wl = waterLevelAt(this.pos.x, this.pos.z);
+    if (surging && this.surge.el === 'wind' && wl > ctx.terrain.heightAt(this.pos.x, this.pos.z) && this.pos.y < wl + 0.05) {
+      this.pos.y = wl + 0.05;
+      this.grounded = true;
+      this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER_Y, z: this.pos.z });
+    }
     // standing on something steeper than ~50 degrees means we are sliding off a cliff
-    if (this.grounded) {
+    if (this.grounded && !(surging && this.surge.el === 'wind' && this.pos.y <= wl + 0.1)) {
       const below = ctx.world.raycastStatic(this.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), new THREE.Vector3(0, -1, 0), 1.2);
       if (below && below.normal.y < 0.62) {
         this.grounded = false;
@@ -475,14 +577,19 @@ export class Player {
     if (this.grounded) this.coyote = 0.14;
     else this.coyote -= dt;
 
-    // animation
+    // animation: playback rate follows ground speed so the feet don't slide
     const hs = Math.hypot(this.vel.x, this.vel.z);
-    if (hs < 0.4) this.char.play('Idle', { fade: 0.25 });
-    else if (this.exhausted) this.char.play('Walking_A', { speed: 0.8 });
-    else if (hs < 3.5) this.char.play('Walking_B', { speed: hs / 2.4 });
-    else this.char.play('Running_A', { speed: sprint ? 1.25 : hs / 5.2 });
+    const scale = this.char.model.scale.x;
+    if (surging && hs > 3) {
+      const el2 = this.surge.el;
+      if (el2 === 'ice' || el2 === 'kinesis') this.char.play('Running_A', { speed: Math.min(2.6, locoRate('Running_A', hs, scale)) });
+      else this.char.play('Running_B', { speed: 0.35, fade: 0.25 });
+    } else if (hs < 0.4) this.char.play('Idle', { fade: 0.25 });
+    else if (this.exhausted) this.char.play('Walking_A', { speed: locoRate('Walking_A', hs, scale) });
+    else if (hs < 3.3) this.char.play('Walking_B', { speed: locoRate('Walking_B', hs, scale) });
+    else this.char.play('Running_A', { speed: Math.min(2.1, locoRate('Running_A', hs, scale)) });
 
-    if (hs > 1) {
+    if (hs > 1 && !surging) {
       this.stepTimer -= dt * hs;
       if (this.stepTimer <= 0) {
         this.stepTimer = 2.2;
@@ -491,14 +598,14 @@ export class Player {
       }
     }
 
-    // climb when pushing into a steep surface
-    if (hasInput && !this.exhausted && this.stamina > 4) {
+    // climb when pushing into a steep surface (not while surging: slide along instead)
+    if (hasInput && !surging && !this.exhausted && this.stamina > 4) {
       const c = this.wallContact(wish);
       if (c && this.tryStartClimb(wish)) return;
     }
 
     if (input.wasPressed('Space') && this.coyote > 0) {
-      this.jump();
+      this.jump(surging ? 9.5 : 8.4);
       return;
     }
     if ((input.wasPressed('KeyC') || input.wasPressed('AltLeft')) && !this.exhausted) {
@@ -628,7 +735,7 @@ export class Player {
     this.state = 'climb';
     this.climbNormal.copy(hit.normal);
     this.vel.set(0, 0, 0);
-    this.char.play('Running_A', { speed: 0.001, fade: 0.2 });
+    this.char.play('Idle', { fade: 0.2 });
     return true;
   }
 
@@ -705,8 +812,9 @@ export class Player {
       }
     }
     this.body.setNextKinematicTranslation({ x: this.pos.x, y: this.pos.y + CENTER_Y, z: this.pos.z });
-    // animation: running cycle scaled by movement reads as hand-over-hand climbing
-    this.char.play('Running_A', { speed: moving ? 0.9 : 0.0001 });
+    // hand-over-hand: the procedural climb pose alternates with this phase
+    this.char.play('Idle', { speed: 0.3 });
+    if (moving) this.climbPhase += dt * 5.5;
     this.grounded = false;
   }
 
@@ -727,7 +835,7 @@ export class Player {
   }
 
   private updateSwim(dt: number, wish: THREE.Vector3, hasInput: boolean, sprintHeld: boolean, wl: number) {
-    const fast = sprintHeld && hasInput && !this.exhausted;
+    const fast = (sprintHeld || this.sprintLock) && hasInput && !this.exhausted;
     const speed = fast ? 5.6 : 3.2;
     if (hasInput) this.useStamina((fast ? 16 : 4.5) * dt);
     const k = damp(4, dt);

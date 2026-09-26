@@ -71,7 +71,7 @@ export class Effects {
 
   constructor(private scene: THREE.Scene) {}
 
-  private add(obj: THREE.Object3D, life: number, update?: Transient['update'], dispose?: () => void) {
+  add(obj: THREE.Object3D, life: number, update?: Transient['update'], dispose?: () => void) {
     this.scene.add(obj);
     this.items.push({ obj, t: 0, life, update, dispose });
   }

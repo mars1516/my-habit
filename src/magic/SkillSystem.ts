@@ -45,6 +45,23 @@ export const SKILLS: Record<Element, SkillDef> = {
   },
 };
 
+/** E-skill charge stages: hold E, one stage per second, release to cast. */
+export const CHARGE_LEVELS = [
+  { radius: 1, damage: 1, cost: 1, cd: 1 },
+  { radius: 1.45, damage: 1.7, cost: 1.5, cd: 1.25 },
+  { radius: 2, damage: 2.6, cost: 2, cd: 1.5 },
+];
+export const CHARGE_STEP = 1;
+
+interface ChargeState {
+  el: Element;
+  t: number;
+  level: number;
+  /** kinesis: charging a throw of the held object rather than a wave */
+  throwing: boolean;
+  preview: THREE.Mesh;
+}
+
 export class SkillSystem {
   projectiles = new Projectiles();
   private basicCd: Record<Element, number> = { fire: 0, ice: 0, wind: 0, lightning: 0, kinesis: 0 };
@@ -56,6 +73,9 @@ export class SkillSystem {
   private handGlow: THREE.Sprite;
   private glowPulse = 0;
   private pending: { t: number; fn: () => void }[] = [];
+  charge: ChargeState | null = null;
+  private previewMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  private previewGeo = new THREE.RingGeometry(0.93, 1, 64).rotateX(-Math.PI / 2);
 
   constructor() {
     const c = document.createElement('canvas');
@@ -150,24 +170,23 @@ export class SkillSystem {
     const el = this.selected;
     if (canCast && player.state !== 'glide' && player.state !== 'swim') {
       if (el === 'kinesis') {
-        if (input.wasPressed('Mouse0')) this.held ? this.release() : this.grab();
-        if (input.wasPressed('KeyE')) this.held ? this.throwHeld() : this.kinesisWave();
-      } else {
-        if (input.isDown('Mouse0') && this.basicCd[el] <= 0) this.basic(el);
-        if (input.wasPressed('KeyE') && this.skillCd[el] <= 0) this.skill(el);
-      }
-      if (input.wasPressed('KeyQ')) this.burst(el);
+        if (input.wasPressed('Mouse0') && !this.charge) this.held ? this.release() : this.grab();
+      } else if (input.isDown('Mouse0') && this.basicCd[el] <= 0 && !this.charge) this.basic(el);
+      if (input.wasPressed('KeyE') && !this.charge) this.startCharge(el);
+      if (input.wasPressed('KeyQ') && !this.charge) this.burst(el);
     } else if (canCast && input.wasPressed('Mouse0') && player.state === 'glide' && el !== 'kinesis' && this.basicCd[el] <= 0) {
       this.basic(el);
     }
     if (this.held) this.updateHeld(dt);
+    if (this.charge) this.updateCharge(dt, canCast);
 
     // hand glow
     const c = new THREE.Color(ELEMENT_INFO[el].color);
     this.glowPulse = Math.max(0, this.glowPulse - dt * 3);
     const hand = player.handWorld(new THREE.Vector3());
     this.handGlow.position.copy(hand);
-    const s = 0.35 + this.glowPulse * 0.9 + Math.sin(ctx.time * 6) * 0.04;
+    const chargeK = this.charge ? this.charge.level * 0.35 + (this.charge.t % CHARGE_STEP) * 0.25 : 0;
+    const s = 0.35 + this.glowPulse * 0.9 + chargeK + Math.sin(ctx.time * (this.charge ? 18 : 6)) * (0.04 + chargeK * 0.1);
     this.handGlow.scale.setScalar(s);
     (this.handGlow.material as THREE.SpriteMaterial).color.copy(c).multiplyScalar(1.4 + this.glowPulse * 2);
     this.handGlow.visible = player.alive;
@@ -267,13 +286,15 @@ export class SkillSystem {
   }
 
   // ---- elemental skills (E) ---------------------------------------------
-  private skill(el: Element) {
+  private skill(el: Element, level = 1) {
     const def = SKILLS[el];
-    if (!ctx.player.useMana(def.skillCost)) {
+    const L = CHARGE_LEVELS[level - 1];
+    if (!ctx.player.useMana(def.skillCost * L.cost)) {
       this.noMana();
       return;
     }
-    this.skillCd[el] = def.skillCd;
+    this.skillCd[el] = def.skillCd * L.cd;
+    if (level > 1) ctx.cam.shake(0.15 * level);
     const t = this.target(el === 'ice' ? 24 : 34);
     const chest = ctx.player.chestWorld();
     const dir = t.point.clone().sub(chest).normalize();
@@ -281,13 +302,25 @@ export class SkillSystem {
     switch (el) {
       case 'fire': {
         this.castAnim('shoot', dir);
-        ctx.fx.rune(ctx.player.handWorld(new THREE.Vector3()), dir, '#ff8a3a', 1.2, 0.4, () => ctx.player.handWorld(new THREE.Vector3()));
+        ctx.fx.rune(ctx.player.handWorld(new THREE.Vector3()), dir, '#ff8a3a', 1.2 * L.radius, 0.4, () => ctx.player.handWorld(new THREE.Vector3()));
         this.later(0.18, () => {
           const hand = ctx.player.handWorld(new THREE.Vector3());
           const aim = t.enemy ? t.enemy.chest() : t.point;
           const d = aim.clone().sub(hand).normalize();
           d.y += 0.04;
-          this.projectiles.spawn({ element: 'fire', from: hand, dir: d, speed: 26, gravity: 4, range: 55, size: 0.6, source: 'player', style: 'big', hit: { element: 'fire', radius: 4.5, damage: 32, push: 8, source: 'player', kind: 'blast' } });
+          this.projectiles.spawn({
+            element: 'fire', from: hand, dir: d, speed: 26 + level * 3, gravity: 4, range: 55, size: 0.6 * (0.7 + level * 0.3), source: 'player', style: 'big',
+            hit: { element: 'fire', radius: 4.5 * L.radius, damage: 32 * L.damage, push: 8 + level * 2, source: 'player', kind: 'blast', potency: level },
+            onImpact: level >= 3 ? (pos) => {
+              // a stage-3 fireball leaves a ring of flames
+              for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                const q = pos.clone().add(new THREE.Vector3(Math.cos(a) * 5, 0, Math.sin(a) * 5));
+                ctx.fire.ignite(q, 1, 2);
+              }
+              ctx.fx.ring(pos, '#ff9a4a', 10, 0.6);
+            } : undefined,
+          });
         });
         break;
       }
@@ -303,20 +336,36 @@ export class SkillSystem {
         if (!onWater) point.y = ctx.terrain.heightAt(point.x, point.z);
         const hitDown = ctx.world.raycastStatic(point.clone().setY(point.y + 6), new THREE.Vector3(0, -1, 0), 14);
         if (!onWater && hitDown) point.y = hitDown.point.y;
-        ctx.fx.rune(point.clone().setY(point.y + 0.1), new THREE.Vector3(0, 1, 0), '#9fe8ff', 3, 0.7);
-        this.later(0.15, () => ctx.props.spawnIcePillar(point, onWater));
+        ctx.fx.rune(point.clone().setY(point.y + 0.1), new THREE.Vector3(0, 1, 0), '#9fe8ff', 3 * L.radius, 0.7);
+        this.later(0.15, () => {
+          ctx.props.spawnIcePillar(point, onWater, [1, 1.4, 1.85][level - 1]);
+          if (level >= 2) {
+            // frost nova around the pillar
+            const r = 3.2 * L.radius;
+            ctx.fx.ring(point, '#dff8ff', r, 0.6);
+            ctx.world.applyHit({ element: 'ice', pos: point, radius: r, damage: 12 * L.damage, source: 'player', kind: 'burst', potency: level });
+            if (onWater) ctx.props.freezeWater(point, r * 1.3);
+            if (level >= 3) ctx.enemies?.freezeNear(point, r, 3.5);
+            for (let i = 0; i < 24 * level; i++) {
+              const a = Math.random() * Math.PI * 2, rr = Math.random() * r;
+              ctx.particles.emit({ pos: point.clone().add(new THREE.Vector3(Math.cos(a) * rr, 0.3, Math.sin(a) * rr)), vel: new THREE.Vector3(0, 2.5, 0), spread: 1.2, life: [0.6, 1.2], size: [0.45, 0.05], color: '#eafaff' });
+            }
+          }
+        });
         break;
       }
       case 'wind': {
         this.castAnim('raise', new THREE.Vector3(Math.sin(ctx.player.yaw), 0, Math.cos(ctx.player.yaw)));
         const base = ctx.player.pos.clone();
-        ctx.world.addUpdraft(base, 3.2, 30, 70, 2.2);
-        ctx.fx.ring(base, '#b8ffe6', 5, 0.6);
-        ctx.fx.rune(base.clone().setY(base.y + 0.1), new THREE.Vector3(0, 1, 0), '#9ff5d8', 4, 0.8);
-        ctx.player.launch(19);
-        ctx.enemies?.launchNear(base, 5, 12);
-        ctx.props.push(base, new THREE.Vector3(0, 1, 0), 5, -1, 9);
-        ctx.world.applyHit({ element: 'wind', pos: base, radius: 5, damage: 10, push: 9, source: 'player', kind: 'burst', dir: new THREE.Vector3(0, 1, 0) });
+        const r = 5 * L.radius;
+        ctx.world.addUpdraft(base, 3.2 * L.radius, 30 + level * 12, 70 + level * 10, 2.2 + level * 0.4);
+        ctx.fx.ring(base, '#b8ffe6', r, 0.6);
+        if (level >= 2) ctx.fx.ring(base, '#e8fff6', r * 1.4, 0.9);
+        ctx.fx.rune(base.clone().setY(base.y + 0.1), new THREE.Vector3(0, 1, 0), '#9ff5d8', 4 * L.radius, 0.8);
+        ctx.player.launch([19, 24, 30][level - 1]);
+        ctx.enemies?.launchNear(base, r, 12 + level * 3);
+        ctx.props.push(base, new THREE.Vector3(0, 1, 0), r, -1, 9 + level * 3);
+        ctx.world.applyHit({ element: 'wind', pos: base, radius: r, damage: 10 * L.damage, push: 9 + level * 3, source: 'player', kind: 'burst', dir: new THREE.Vector3(0, 1, 0) });
         break;
       }
       case 'lightning': {
@@ -328,17 +377,25 @@ export class SkillSystem {
         if (ground) point = ground.point;
         const wp = ctx.world.rayWater(point.clone().setY(point.y + 20), new THREE.Vector3(0, -1, 0), 40);
         if (wp) point = wp;
-        ctx.fx.rune(point.clone().setY(point.y + 0.1), new THREE.Vector3(0, 1, 0), '#c9a8ff', 5, 0.75);
-        this.later(0.55, () => {
-          ctx.fx.bolt(point.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, 60, (Math.random() - 0.5) * 6)), point, '#e0d0ff', 0.35, 1.4);
-          ctx.fx.sphere(point, '#b58cff', 3.8, 0.3);
-          ctx.fx.ring(point, '#d0b8ff', 5.5, 0.45);
-          ctx.lights.flash(point.clone().setY(point.y + 4), '#d8c8ff', 250, 40, 0.3);
-          ctx.cam.shake(0.6);
-          events.emit('sound', { name: 'thunder', pos: point, volume: 0.9 });
-          ctx.particles.emit({ pos: point, count: 40, spread: 7, gravity: 6, life: [0.2, 0.6], size: [0.5, 0.05], color: '#efe0ff' });
-          ctx.world.applyHit({ element: 'lightning', pos: point, radius: 3.8, damage: 42, source: 'player', kind: 'strike', push: 6 });
-        });
+        const r = 3.8 * L.radius;
+        ctx.fx.rune(point.clone().setY(point.y + 0.1), new THREE.Vector3(0, 1, 0), '#c9a8ff', 5 * L.radius, 0.75);
+        const strikes = level >= 3 ? [point, ...[0, 1, 2].map((i) => {
+          const a = (i / 3) * Math.PI * 2 + Math.random();
+          const q = point.clone().add(new THREE.Vector3(Math.cos(a) * r * 0.8, 0, Math.sin(a) * r * 0.8));
+          q.y = ctx.terrain.heightAt(q.x, q.z);
+          return q;
+        })] : [point];
+        strikes.forEach((pt, i) => this.later(0.55 + i * 0.12, () => {
+          const main = i === 0;
+          ctx.fx.bolt(pt.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, 60, (Math.random() - 0.5) * 6)), pt, '#e0d0ff', 0.35, main ? 1.4 * (0.8 + level * 0.2) : 1);
+          ctx.fx.sphere(pt, '#b58cff', main ? r : r * 0.5, 0.3);
+          ctx.fx.ring(pt, '#d0b8ff', main ? r * 1.45 : r * 0.7, 0.45);
+          ctx.lights.flash(pt.clone().setY(pt.y + 4), '#d8c8ff', 250, 40, 0.3);
+          ctx.cam.shake(main ? 0.4 + level * 0.15 : 0.3);
+          events.emit('sound', { name: 'thunder', pos: pt, volume: 0.9 });
+          ctx.particles.emit({ pos: pt, count: 30 + level * 15, spread: 7, gravity: 6, life: [0.2, 0.6], size: [0.5, 0.05], color: '#efe0ff' });
+          ctx.world.applyHit({ element: 'lightning', pos: pt, radius: main ? r : r * 0.55, damage: (main ? 42 : 24) * L.damage, source: 'player', kind: 'strike', push: 6, potency: level });
+        }));
         break;
       }
       case 'kinesis':
@@ -459,29 +516,33 @@ export class SkillSystem {
     ctx.player.char.stopUpper();
   }
 
-  private throwHeld() {
+  private throwHeld(level = 1) {
     const g = this.held!;
     const dir = ctx.cam.aimRay(40).point.clone().sub(g.position()).normalize();
     this.release();
-    g.throwTo(dir.multiplyScalar(30));
+    g.throwTo(dir.multiplyScalar(30 * [1, 1.35, 1.75][level - 1]));
+    if (level > 1) ctx.fx.ring(g.position(), '#ff7ad9', 2 * level, 0.35);
     this.castAnim('shoot', dir);
     events.emit('sound', { name: 'throw', volume: 0.5 });
   }
 
-  private kinesisWave() {
+  private kinesisWave(level = 1) {
     if (this.skillCd.kinesis > 0) return;
-    if (!ctx.player.useMana(SKILLS.kinesis.skillCost)) {
+    const L = CHARGE_LEVELS[level - 1];
+    if (!ctx.player.useMana(SKILLS.kinesis.skillCost * L.cost)) {
       this.noMana();
       return;
     }
-    this.skillCd.kinesis = SKILLS.kinesis.skillCd;
+    this.skillCd.kinesis = SKILLS.kinesis.skillCd * L.cd;
     const base = ctx.player.pos.clone().setY(ctx.player.pos.y + 1);
+    const r = 6 * L.radius;
     this.castAnim('raise', ctx.cam.forward(new THREE.Vector3()));
-    ctx.fx.sphere(base, '#ff7ad9', 6, 0.35);
-    ctx.fx.ring(ctx.player.pos, '#ffb0ec', 7, 0.4);
-    ctx.props.push(base, new THREE.Vector3(0, 0.3, 0), 7, -1, 12);
-    ctx.enemies?.push(base, new THREE.Vector3(0, 0.3, 0), 7, -1, 12);
-    ctx.world.applyHit({ element: 'kinesis', pos: base, radius: 6, damage: 9, push: 10, source: 'player', kind: 'burst' });
+    ctx.fx.sphere(base, '#ff7ad9', r, 0.35);
+    ctx.fx.ring(ctx.player.pos, '#ffb0ec', r * 1.15, 0.4);
+    if (level > 1) ctx.cam.shake(0.15 * level);
+    ctx.props.push(base, new THREE.Vector3(0, 0.3, 0), r * 1.15, -1, 12 + level * 3);
+    ctx.enemies?.push(base, new THREE.Vector3(0, 0.3, 0), r * 1.15, -1, 12 + level * 3);
+    ctx.world.applyHit({ element: 'kinesis', pos: base, radius: r, damage: 9 * L.damage, push: 10 + level * 3, source: 'player', kind: 'burst' });
     events.emit('sound', { name: 'skill_kinesis', volume: 0.6 });
   }
 
@@ -512,6 +573,107 @@ export class SkillSystem {
     t.scale.set(1 + Math.sin(ctx.time * 20) * 0.3, 1, hand.distanceTo(pos));
     if (Math.random() < 0.6) ctx.particles.emit({ pos: pos, count: 1, posSpread: 0.8, spread: 0.6, life: [0.3, 0.6], size: [0.3, 0.02], color: '#ffb0ec' });
     if (Math.random() < 0.4) ctx.particles.emit({ pos: hand.clone().lerp(pos, Math.random()), count: 1, spread: 0.3, life: [0.2, 0.4], size: [0.2, 0.02], color: '#ff7ad9' });
+  }
+
+  // ---- charging (hold E) ---------------------------------------------------
+  private chargeRadius(c: ChargeState) {
+    const L = CHARGE_LEVELS[c.level - 1];
+    switch (c.el) {
+      case 'fire': return 4.5 * L.radius;
+      case 'ice': return c.level > 1 ? 3.2 * L.radius : 1.5;
+      case 'wind': return 5 * L.radius;
+      case 'lightning': return 3.8 * L.radius;
+      case 'kinesis': return c.throwing ? 0 : 6 * L.radius;
+    }
+  }
+
+  private startCharge(el: Element) {
+    const throwing = el === 'kinesis' && !!this.held;
+    if (!throwing && this.skillCd[el] > 0) {
+      events.emit('sound', { name: 'error', volume: 0.2 });
+      return;
+    }
+    if (!throwing && ctx.player.mana < SKILLS[el].skillCost) {
+      this.noMana();
+      return;
+    }
+    const preview = new THREE.Mesh(this.previewGeo, this.previewMat.clone());
+    (preview.material as THREE.MeshBasicMaterial).color.set(ELEMENT_INFO[el].color).multiplyScalar(1.4);
+    preview.frustumCulled = false;
+    ctx.scene.add(preview);
+    this.charge = { el, t: 0, level: 1, throwing, preview };
+    if (!throwing) ctx.player.char.playUpper('Spellcasting', { hold: true, speed: 1.2 });
+    events.emit('sound', { name: 'charge', volume: 0.35 });
+  }
+
+  private updateCharge(dt: number, canCast: boolean) {
+    const c = this.charge!;
+    const p = ctx.player;
+    const castable = canCast && p.state !== 'glide' && p.state !== 'swim' && p.state !== 'climb';
+    if (!castable || c.el !== this.selected) {
+      this.endCharge(false);
+      return;
+    }
+    c.t += dt;
+    const want = Math.min(3, 1 + Math.floor(c.t / CHARGE_STEP));
+    if (want > c.level) {
+      const cost = SKILLS[c.el].skillCost * CHARGE_LEVELS[want - 1].cost;
+      if (c.throwing || p.mana >= cost || p.godMode) {
+        c.level = want;
+        const hand = p.handWorld(new THREE.Vector3());
+        const col = ELEMENT_INFO[c.el].color;
+        ctx.fx.sphere(hand, col, 0.6 + c.level * 0.3, 0.25);
+        ctx.fx.ring(p.pos, col, 1.5 + c.level, 0.35);
+        ctx.particles.emit({ pos: hand, count: 16 * c.level, spread: 3, life: [0.2, 0.45], size: [0.35, 0.03], color: ELEMENT_INFO[c.el].glow, color2: col });
+        events.emit('sound', { name: 'chargeLevel', volume: 0.45 + c.level * 0.1 });
+        this.glowPulse = 1;
+      }
+    }
+    p.castSlow = Math.max(p.castSlow, 0.1);
+    const look = ctx.cam.forward(new THREE.Vector3());
+    p.faceDirection(look, 0.15);
+    // particles spiralling into the right hand
+    const hand = p.handWorld(new THREE.Vector3());
+    if (Math.random() < dt * (20 + c.level * 25)) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 0.9 + c.level * 0.35;
+      const from = hand.clone().add(new THREE.Vector3(Math.cos(a) * r, (Math.random() - 0.5) * r, Math.sin(a) * r));
+      ctx.particles.emit({ pos: from, vel: hand.clone().sub(from).multiplyScalar(3.2), spread: 0.1, life: [0.25, 0.3], size: [0.12, 0.28], color: ELEMENT_INFO[c.el].glow, color2: ELEMENT_INFO[c.el].color });
+    }
+    // area preview on the ground
+    const r = this.chargeRadius(c);
+    const pv = c.preview;
+    pv.visible = r > 0;
+    if (pv.visible) {
+      let at = p.pos.clone();
+      if (c.el === 'fire' || c.el === 'lightning' || c.el === 'ice') {
+        const t = this.target(c.el === 'ice' ? 24 : 34);
+        at = t.enemy ? t.enemy.feet() : t.point.clone();
+        const flat = at.clone().sub(p.pos).setY(0);
+        const lim = c.el === 'ice' ? 22 : c.el === 'lightning' ? 30 : 40;
+        if (flat.length() > lim) at = p.pos.clone().add(flat.setLength(lim));
+        at.y = Math.max(at.y, ctx.terrain.heightAt(at.x, at.z));
+      }
+      const cur = pv.scale.x || r;
+      pv.scale.setScalar(cur + (r - cur) * Math.min(1, dt * 12));
+      pv.position.copy(at).add(new THREE.Vector3(0, 0.2, 0));
+      (pv.material as THREE.MeshBasicMaterial).opacity = 0.35 + Math.sin(ctx.time * 10) * 0.12;
+    }
+    if (!ctx.input.isDown('KeyE')) this.endCharge(true);
+  }
+
+  private endCharge(cast: boolean) {
+    const c = this.charge;
+    if (!c) return;
+    this.charge = null;
+    c.preview.removeFromParent();
+    (c.preview.material as THREE.Material).dispose();
+    if (!c.throwing) ctx.player.char.stopUpper(0.1);
+    if (!cast) return;
+    if (c.el === 'kinesis') {
+      if (c.throwing && this.held) this.throwHeld(c.level);
+      else if (!c.throwing) this.kinesisWave(c.level);
+    } else this.skill(c.el, c.level);
   }
 
   private noMana() {

@@ -82,6 +82,7 @@ export class Game {
     ctx.settings = this.settings;
     ctx.input = new Input(this.renderer.domElement);
     ctx.time = 0;
+    ctx.slowmo = 1;
     ctx.wind = new THREE.Vector2(1, 0.3);
     ctx.save = new SaveState();
 
@@ -173,8 +174,8 @@ export class Game {
       ctx.skills.update(dt);
       ctx.props.update(dt);
       ctx.interact.update(dt);
-      ctx.enemies.update(dt);
-      ctx.npcs.update(dt);
+      ctx.enemies.update(dt * ctx.slowmo);
+      ctx.npcs.update(dt * ctx.slowmo);
       ctx.quests.update(dt);
       for (const u of this.updaters) u(dt);
       ctx.world.update(dt);
@@ -198,7 +199,7 @@ export class Game {
     this.renderer.toneMappingExposure = 1 + ctx.sky.night * 0.25;
     ctx.water.update(dt, ctx.sky, this.camera);
     ctx.grass.update(dt, this.camera.position, ctx.player.pos, ctx.wind, ctx.sky.night);
-    ctx.particles.update(playing || this.mode === 'title' ? dt : 0);
+    ctx.particles.update(playing || this.mode === 'title' ? dt * (0.35 + ctx.slowmo * 0.65) : 0);
     ctx.lights.update(playing ? dt : 0);
     ctx.fx.update(playing ? dt : 0);
     culler.update(dt, this.camera.position);

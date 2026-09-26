@@ -2,7 +2,7 @@
 // node scripts/shot.mjs "<query>" out.png [waitMs] [js] [js2 ...]  — each js step is evaluated then a shot is taken (out-N.png)
 import { chromium } from 'playwright';
 const [,, query = '', out = 'shot.png', waitMs = '4000', ...steps] = process.argv;
-const url = `http://localhost:5173/?${query}`;
+const url = `${process.env.BASE ?? 'http://localhost:5173/'}?${query}`;
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],

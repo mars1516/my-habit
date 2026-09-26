@@ -20,6 +20,8 @@ export interface Tree {
   rot: number;
   state: 0 | 1 | 2; // normal, burning, burnt
   burn: number;
+  /** How many tree-to-tree hops this fire has made (spread stops after a couple). */
+  fireGen?: number;
   apples: number;
   idx: number; // handle within its type's chunked instances
   collider?: RAPIER.Collider;
@@ -367,17 +369,18 @@ export class Vegetation {
     return out;
   }
 
-  ignite(t: Tree) {
+  ignite(t: Tree, gen = 0) {
     if (t.state !== 0) return;
     t.state = 1;
+    t.fireGen = gen;
     t.burn = t.type === 'bush' || t.type === 'drybush' ? 4 : 11;
     this.burningSet.add(t);
     this.meshes.get(t.type)!.setColor(t.idx, BURN);
     if (t.apples > 0) this.dropApples(t, true);
   }
 
-  igniteNear(pos: THREE.Vector3, r: number) {
-    for (const t of this.near(pos.x, pos.z, r)) if (Math.abs(t.y - pos.y) < 6) this.ignite(t);
+  igniteNear(pos: THREE.Vector3, r: number, gen = 0) {
+    for (const t of this.near(pos.x, pos.z, r)) if (Math.abs(t.y - pos.y) < 6) this.ignite(t, gen);
   }
 
   extinguishNear(pos: THREE.Vector3, r: number) {
@@ -420,9 +423,9 @@ export class Vegetation {
         ctx.particles.emit({ pos, posSpread: t.type === 'oak' ? 1.8 : 1.0, vel: new THREE.Vector3(0, 3, 0), spread: 1, life: [0.5, 1.0], size: [1.4, 0.2], color: '#ffc050', color2: '#ff3000', count: 2 });
       if (Math.random() < 0.15)
         ctx.particles.emit({ pos, posSpread: 1, vel: new THREE.Vector3(0, 3, 0), spread: 0.8, life: [1.5, 2.5], size: [1.5, 3.5], alpha: [0.35, 0], color: '#3a3430', additive: false, drag: 0.8 });
-      if (Math.random() < dt * 1.2) ctx.fire.igniteCircle(t.x, t.z, 3);
-      if (Math.random() < dt * 0.35) {
-        for (const o of this.near(t.x, t.z, 6)) if (o !== t && !ctx.weather?.raining) this.ignite(o);
+      if (Math.random() < dt * 1.2) ctx.fire.igniteCircle(t.x, t.z, 3, 1.2);
+      if ((t.fireGen ?? 0) < 2 && Math.random() < dt * 0.25) {
+        for (const o of this.near(t.x, t.z, 4.5)) if (o !== t && !ctx.weather?.raining && Math.random() < 0.5) this.ignite(o, (t.fireGen ?? 0) + 1);
       }
       if (Math.random() < dt * 2) ctx.lights.flash(new THREE.Vector3(t.x, t.y + top * 0.6, t.z), '#ff8a30', 30, 18, 0.6);
       if (ctx.weather?.raining) t.burn -= dt * 2;

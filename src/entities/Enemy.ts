@@ -110,7 +110,7 @@ export class Enemy {
   }
 
   chest(out = new THREE.Vector3()) {
-    return out.copy(this.pos).add(new THREE.Vector3(0, 1.1 * this.scale, 0));
+    return out.copy(this.pos).add(new THREE.Vector3(0, 1.2 * this.scale, 0));
   }
 
   feet() {
@@ -118,7 +118,7 @@ export class Enemy {
   }
 
   head() {
-    return this.pos.clone().add(new THREE.Vector3(0, 2.1 * this.scale, 0));
+    return this.pos.clone().add(new THREE.Vector3(0, 2.2 * this.scale, 0));
   }
 
   private setState(s: AIState) {
@@ -377,7 +377,7 @@ export class Enemy {
       }
       if (Math.random() < 0.7)
         ctx.particles.emit({ pos: this.chest(), posSpread: 0.4 * this.scale, vel: new THREE.Vector3(0, 2.2, 0), spread: 0.6, life: [0.3, 0.6], size: [0.9, 0.1], color: '#ffc050', color2: '#ff3000' });
-      if (Math.random() < dt * 1.5) ctx.fire.igniteCircle(this.pos.x, this.pos.z, 1.2);
+      if (Math.random() < dt * 1.5) ctx.fire.igniteCircle(this.pos.x, this.pos.z, 1.2, 1);
     }
     // tint
     if (s.frozen > 0) this.char.setTint('#80d8ff', 0.5);

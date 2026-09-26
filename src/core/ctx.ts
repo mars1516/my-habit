@@ -56,6 +56,8 @@ export interface Ctx {
   /** Global wind direction (xz) used by grass, fire spread and clouds. */
   wind: THREE.Vector2;
   debug: boolean;
+  /** Time scale for everything except the player (Sandevistan slow motion). */
+  slowmo: number;
 }
 
 export const ctx = {} as Ctx;

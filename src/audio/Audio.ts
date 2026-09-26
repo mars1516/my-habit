@@ -328,6 +328,32 @@ export class AudioSys {
       case 'appear':
         this.chord([784, 988, 1175, 1568], 0.08, 0.9, vol * 0.2, 'sine');
         break;
+      case 'charge':
+        this.tone(220, 0.9, vol * 0.25, { type: 'sine', to: 440, attack: 0.2, reverb: 0.4 });
+        this.noise(0.8, vol * 0.3, { type: 'bandpass', freq: 400, to: 2400, q: 2, attack: 0.3 });
+        break;
+      case 'chargeLevel':
+        this.chord([660, 990, 1320], 0.03, 0.45, vol * 0.2, 'sine');
+        this.noise(0.25, vol * 0.4, { type: 'highpass', freq: 3000 });
+        break;
+      case 'surge':
+        this.noise(0.9, vol, { type: 'bandpass', freq: 300, to: 2600, q: 0.9, attack: 0.05 });
+        this.tone(110, 0.7, vol * 0.4, { type: 'sawtooth', to: 330, reverb: 0.3 });
+        break;
+      case 'surgeFire':
+        this.noise(0.3, vol * 0.8, { type: 'lowpass', freq: 900, to: 300, q: 0.7 });
+        break;
+      case 'surgeIce':
+        this.tone(1760 + r * 600, 0.25, vol * 0.12, { type: 'sine', reverb: 0.5 });
+        this.noise(0.12, vol * 0.4, { type: 'highpass', freq: 4000 });
+        break;
+      case 'surgeZap':
+        this.tone(900 + r * 900, 0.08, vol * 0.08, { type: 'square', to: 200 });
+        break;
+      case 'sandevistan':
+        this.tone(880, 1.2, vol * 0.2, { type: 'triangle', to: 110, reverb: 0.8 });
+        this.tone(55, 1.4, vol * 0.5, { type: 'sine', attack: 0.05 });
+        break;
       case 'discover':
       case 'beacon':
         this.chord([392, 523, 659, 784, 1046], 0.12, 1.8, vol * 0.22);

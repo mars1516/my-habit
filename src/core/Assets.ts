@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { PngTexturePlugin } from './PngTexture';
+import { reproportionCharacter, reproportionClips } from './Proportions';
 
 export type CharacterKey =
   | 'mage'
@@ -58,6 +60,7 @@ export class Assets {
   async load(base: string, onProgress: (p: number) => void) {
     const manager = new THREE.LoadingManager();
     const loader = new GLTFLoader(manager);
+    loader.register((parser) => new PngTexturePlugin(parser));
     const files = [
       ...CHARACTERS.map((c) => `characters/${c}.glb`),
       'characters/anims_adventurer.glb',
@@ -76,10 +79,13 @@ export class Assets {
     CHARACTERS.forEach((c, i) => {
       const g = results[i];
       this.prepareMaterials(g.scene);
+      reproportionCharacter(g.scene);
       this.chars.set(c, g);
     });
     this.clips.adventurer = results[CHARACTERS.length].animations;
     this.clips.skeleton = results[CHARACTERS.length + 1].animations;
+    reproportionClips(results[CHARACTERS.length].scene, this.clips.adventurer);
+    reproportionClips(results[CHARACTERS.length + 1].scene, this.clips.skeleton);
     const env = results[CHARACTERS.length + 2];
     this.prepareMaterials(env.scene);
     this.envRoot = env.scene;

@@ -6,7 +6,12 @@ import { events } from '../core/Events';
 interface Burning {
   t: number;
   dur: number;
+  /** Spread budget: each hop to a neighbour costs some; at 0 the flames stay put. */
+  energy: number;
 }
+
+/** Default spread budget of a new fire (~5 cells = 10 m with no wind). */
+const IGNITE_ENERGY = 4.5;
 
 const MAX_BURNING = 1800;
 const TICK = 0.12;
@@ -45,14 +50,19 @@ export class FireGrid {
     return this.fuel(i) > 0.18;
   }
 
-  igniteCell(i: number) {
+  igniteCell(i: number, energy = IGNITE_ENERGY) {
     if (!this.canBurn(i) || this.burning.size >= MAX_BURNING) return false;
-    this.burning.set(i, { t: 0, dur: 2.2 + Math.random() * 2.2 });
+    this.burning.set(i, { t: 0, dur: 2.2 + Math.random() * 2.2, energy });
     return true;
   }
 
+  /** Ignite grass around a world point (radius in metres). */
+  ignite(pos: THREE.Vector3, r: number, energy = IGNITE_ENERGY) {
+    return this.igniteCircle(pos.x, pos.z, r, energy);
+  }
+
   /** Ignite grass around a point. Returns number of cells lit. */
-  igniteCircle(x: number, z: number, r: number) {
+  igniteCircle(x: number, z: number, r: number, energy = IGNITE_ENERGY) {
     let n = 0;
     const cr = Math.ceil(r / CELL);
     const cx = Math.floor((x + HALF) / CELL), cz = Math.floor((z + HALF) / CELL);
@@ -61,7 +71,7 @@ export class FireGrid {
         if (dx * dx + dz * dz > cr * cr) continue;
         const ix = cx + dx, iz = cz + dz;
         if (ix < 0 || iz < 0 || ix >= RES || iz >= RES) continue;
-        if (this.igniteCell(iz * RES + ix)) n++;
+        if (this.igniteCell(iz * RES + ix, energy)) n++;
       }
     if (n > 0) events.emit('sound', { name: 'ignite', pos: new THREE.Vector3(x, ctx.terrain.heightAt(x, z), z), volume: 0.5 });
     return n;
@@ -89,8 +99,8 @@ export class FireGrid {
 
   /** Wind blows flames forward, spreading the fire in its direction. */
   blow(origin: THREE.Vector3, dir: THREE.Vector3, range: number) {
-    const spawned: number[] = [];
-    for (const i of this.burning.keys()) {
+    const spawned: [number, number][] = [];
+    for (const [i, b] of this.burning) {
       const c = ctx.terrain.cellCenter(i, this.tmp);
       const dx = c.x - origin.x, dz = c.z - origin.z;
       const d = Math.hypot(dx, dz);
@@ -98,10 +108,10 @@ export class FireGrid {
       if ((dx * dir.x + dz * dir.z) / (d || 1) < 0.3 && d > 2) continue;
       for (let s = 1; s <= 3; s++) {
         const j = ctx.terrain.cellIndex(c.x + dir.x * CELL * s, c.z + dir.z * CELL * s);
-        if (j >= 0) spawned.push(j);
+        if (j >= 0) spawned.push([j, Math.min(IGNITE_ENERGY, b.energy + 1.5 - s)]);
       }
     }
-    for (const j of spawned) this.igniteCell(j);
+    for (const [j, e] of spawned) this.igniteCell(j, e);
     return spawned.length;
   }
 
@@ -129,7 +139,7 @@ export class FireGrid {
     const wind = ctx.wind;
     while (this.acc >= TICK) {
       this.acc -= TICK;
-      const toIgnite: number[] = [];
+      const toIgnite: [number, number][] = [];
       const done: number[] = [];
       for (const [i, b] of this.burning) {
         b.t += TICK * (raining ? 2.5 : 1);
@@ -137,7 +147,7 @@ export class FireGrid {
           done.push(i);
           continue;
         }
-        if (raining) continue;
+        if (raining || b.energy <= 0) continue;
         const ix = i % RES, iz = (i / RES) | 0;
         for (const [dx, dz] of NEIGH) {
           const jx = ix + dx, jz = iz + dz;
@@ -146,8 +156,10 @@ export class FireGrid {
           if (!this.canBurn(j)) continue;
           const len = Math.hypot(dx, dz);
           const align = (dx * wind.x + dz * wind.y) / len;
-          const p = 0.075 * this.fuel(j) * (1 + align * 0.9) * (len > 1 ? 0.7 : 1);
-          if (Math.random() < p) toIgnite.push(j);
+          const p = 0.06 * this.fuel(j) * (1 + align * 0.9) * (len > 1 ? 0.7 : 1);
+          // downwind hops are cheap, upwind ones expensive
+          const cost = (1.05 - align * 0.5) * len;
+          if (Math.random() < p) toIgnite.push([j, b.energy - cost]);
         }
       }
       for (const i of done) {
@@ -155,7 +167,7 @@ export class FireGrid {
         ctx.terrain.setBurnt(i, 255);
         this.scorched.set(i, 255);
       }
-      for (const j of toIgnite) this.igniteCell(j);
+      for (const [j, e] of toIgnite) this.igniteCell(j, e);
       // damage and ignite things standing in the flames
       this.burnActors();
     }
@@ -191,7 +203,7 @@ export class FireGrid {
     for (const i of this.burning.keys()) {
       if (Math.random() > 0.08) continue;
       const c = ctx.terrain.cellCenter(i, this.tmp);
-      ctx.veg.igniteNear(c, 1.2);
+      ctx.veg.igniteNear(c, 1.2, 1);
       ctx.props?.igniteNear(c, 1.6);
       if (++k > 40) break;
     }

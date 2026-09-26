@@ -312,7 +312,7 @@ export class DynamicProp extends Prop implements Grabbable {
       for (const m of this.mats) m.emissive.copy(this.tint);
       ctx.particles.emit({ pos: this.pos, posSpread: 0.6, vel: new THREE.Vector3(0, 2.5, 0), spread: 0.8, life: [0.4, 0.8], size: [1.1, 0.1], color: '#ffc050', color2: '#ff3000', count: 2 });
       if (Math.random() < dt * 2) {
-        ctx.fire.igniteCircle(this.pos.x, this.pos.z, 2);
+        ctx.fire.igniteCircle(this.pos.x, this.pos.z, 2, 1.5);
         ctx.props.igniteNear(this.pos, 2.2, this);
       }
       if (this.burning <= 0) this.breakApart(false);
@@ -374,11 +374,11 @@ class IcePillar extends Prop {
   private base: number;
   private height: number;
 
-  constructor(pos: THREE.Vector3, onWater: boolean) {
+  constructor(pos: THREE.Vector3, onWater: boolean, scale = 1) {
     super();
     const wl = waterLevelAt(pos.x, pos.z);
     this.base = onWater ? wl - 2.5 : pos.y - 0.4;
-    this.height = onWater ? 6.2 : 4.6;
+    this.height = (onWater ? 6.2 : 4.6) * scale;
     this.pos.set(pos.x, this.base, pos.z);
     this.radius = 1.5;
     const geo = new THREE.CylinderGeometry(1.25, 1.4, this.height, 6).translate(0, this.height / 2, 0);
@@ -640,9 +640,9 @@ export class Props {
   }
 
   // ---- ice ----------------------------------------------------------------
-  spawnIcePillar(point: THREE.Vector3, onWater: boolean) {
+  spawnIcePillar(point: THREE.Vector3, onWater: boolean, scale = 1) {
     if (this.pillars.length >= 3) this.pillars.shift()!.shatter();
-    const p = this.add(new IcePillar(point, onWater));
+    const p = this.add(new IcePillar(point, onWater, scale));
     this.pillars.push(p);
     this.pillars = this.pillars.filter((x) => !x.removed);
     return p;

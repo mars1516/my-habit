@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+const [,, query, out] = process.argv;
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await b.newPage({ viewport: { width: Number(process.env.W ?? 1100), height: Number(process.env.H ?? 700) } });
+p.on('console', (m) => { if (m.type() !== 'debug' && !m.text().includes('[vite]')) console.log(m.type(), m.text()); });
+p.on('pageerror', (e) => console.log('ERR', e.message));
+await p.goto('http://127.0.0.1:5173/dev/charview.html?' + query);
+await p.waitForFunction(() => window.__ready, null, { timeout: 120000 });
+await p.screenshot({ path: out });
+await b.close();

@@ -48,6 +48,7 @@ export class UI {
   private pickupsEl: HTMLElement;
   private bannerEl: HTMLElement;
   private crosshair: HTMLElement;
+  private chargeEl!: HTMLElement;
   private bossBar: HTMLElement;
   private fpsEl: HTMLElement;
   private hintEl: HTMLElement;
@@ -129,6 +130,7 @@ export class UI {
     br.append(actions, bar);
 
     this.crosshair = h('div', 'crosshair');
+    this.chargeEl = h('div', 'charge hidden', '<div class="pips"><i></i><i></i><i></i></div><div class="lv"></div>');
     this.promptEl = h('div', 'prompt hidden');
     this.toastsEl = h('div', 'toasts');
     this.pickupsEl = h('div', 'pickups');
@@ -137,7 +139,7 @@ export class UI {
     this.fpsEl = h('div', 'fps hidden');
     this.hintEl = h('div', 'hint');
     this.lockEl = h('div', 'lock-reticle hidden');
-    this.hud.append(tl, bl, this.staminaCanvas, br, this.crosshair, this.promptEl, this.toastsEl, this.pickupsEl, this.bannerEl, this.bossBar, this.fpsEl, this.hintEl, this.lockEl);
+    this.hud.append(tl, bl, this.staminaCanvas, br, this.crosshair, this.chargeEl, this.promptEl, this.toastsEl, this.pickupsEl, this.bannerEl, this.bossBar, this.fpsEl, this.hintEl, this.lockEl);
     for (let i = 0; i < 14; i++) {
       const b = h('div', 'ehp hidden', '<div class="ename"></div><div class="etrack"><div class="efill"></div></div><div class="ealert">!</div>');
       this.hpBars.push(b);
@@ -327,6 +329,18 @@ export class UI {
     p.append(this.settingsContent());
     p.append(this.button('돌아가기', () => this.showTitle(!!localStorage.getItem('etheria-save-v1')), 'primary'));
     this.screenEl.append(p);
+  }
+
+  /** Full-screen overlays (e.g. the Sandevistan tint). */
+  setScreenFx(name: string, on: boolean) {
+    let el = document.getElementById('fx-' + name);
+    if (!el && on) {
+      el = document.createElement('div');
+      el.id = 'fx-' + name;
+      el.className = 'screen-fx ' + name;
+      document.getElementById('ui-root')!.appendChild(el);
+    }
+    el?.classList.toggle('on', on);
   }
 
   hideTitle() {
@@ -978,6 +992,27 @@ export class UI {
     this.qBtn.style.setProperty('--c', info.color);
     (this.qBtn.querySelector('.fill') as HTMLElement).style.background = `conic-gradient(${info.color} ${en * 360}deg, rgba(0,0,0,0.5) 0)`;
     this.qBtn.classList.toggle('ready', en >= 1);
+    // E charge stages
+    const ch = sk.charge;
+    this.chargeEl.classList.toggle('hidden', !ch);
+    if (ch) {
+      this.chargeEl.style.setProperty('--c', ELEMENT_INFO[ch.el].color);
+      const pips = this.chargeEl.querySelectorAll('i');
+      pips.forEach((pe, i) => {
+        const f = i === 0 ? 1 : Math.min(1, Math.max(0, ch.t - (i - 1)));
+        const on = ch.level > i;
+        (pe as HTMLElement).style.setProperty('--f', String(on ? 1 : Math.min(0.92, f)));
+        pe.classList.toggle('on', on);
+      });
+      const lv = this.chargeEl.querySelector('.lv') as HTMLElement;
+      const txt = `${ch.level}단계`;
+      if (lv.textContent !== txt) {
+        lv.textContent = txt;
+        lv.classList.remove('pop');
+        void lv.offsetWidth;
+        lv.classList.add('pop');
+      }
+    }
     this.manaFill.style.width = (ctx.player.mana / ctx.player.maxMana) * 100 + '%';
     (this.manaFill.parentElement as HTMLElement).style.width = 150 + ctx.player.maxMana + 'px';
   }

@@ -51,7 +51,7 @@ export class CameraRig {
   }
 
   snapTo(pos: THREE.Vector3, yaw?: number) {
-    this.pivot.copy(pos).add(new THREE.Vector3(0, 1.55, 0));
+    this.pivot.copy(pos).add(new THREE.Vector3(0, 1.6, 0));
     if (yaw !== undefined) this.yaw = yaw;
     this.initialized = true;
   }
@@ -77,7 +77,7 @@ export class CameraRig {
     this.aimBlend += ((aiming ? 1 : 0) - this.aimBlend) * damp(12, dt);
 
     const target = this.tmpDir.copy(focus);
-    target.y += 1.55;
+    target.y += 1.6;
     if (!this.initialized) {
       this.pivot.copy(target);
       this.initialized = true;
