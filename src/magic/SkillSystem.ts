@@ -258,12 +258,21 @@ export class SkillSystem {
   private gust(from: THREE.Vector3, dir: THREE.Vector3) {
     const range = 12;
     const cone = Math.cos(0.6);
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 70; i++) {
       const spread = new THREE.Vector3((Math.random() - 0.5) * 0.9, (Math.random() - 0.3) * 0.5, (Math.random() - 0.5) * 0.9);
-      const v = dir.clone().add(spread).normalize().multiplyScalar(18 + Math.random() * 10);
-      ctx.particles.emit({ pos: from.clone().addScaledVector(dir, 0.5), vel: v, spread: 0.5, life: [0.35, 0.6], size: [0.35, 0.9], alpha: [0.7, 0], color: '#e8fff6', drag: 2.5 });
+      const v = dir.clone().add(spread).normalize().multiplyScalar(20 + Math.random() * 14);
+      ctx.particles.emit({ pos: from.clone().addScaledVector(dir, 0.5), vel: v, spread: 0.5, life: [0.35, 0.65], size: [0.45, 1.2], alpha: [0.75, 0], color: '#effff8', color2: '#8ff5d0', drag: 2.5 });
     }
-    ctx.fx.ring(from.clone().addScaledVector(dir, 2).setY(from.y - 0.8), '#bfffe8', 3, 0.35);
+    ctx.fx.ring(from.clone().addScaledVector(dir, 2).setY(from.y - 0.8), '#bfffe8', 4, 0.35);
+    // a spiralling ribbon of wind racing ahead of the hand
+    const pts: THREE.Vector3[] = [];
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const ang = t * Math.PI * 3;
+      pts.push(from.clone().addScaledVector(dir, 0.6 + t * range * 0.9).addScaledVector(side, Math.cos(ang) * (0.3 + t * 1.2)).add(new THREE.Vector3(0, Math.sin(ang) * (0.3 + t * 1.2), 0)));
+    }
+    ctx.fx.trail(pts, '#dffff2', 0.35, 0.4);
     const pushed = ctx.props.push(from, dir, range, cone, 13);
     ctx.enemies?.push(from, dir, range, cone, 11);
     const center = from.clone().addScaledVector(dir, range * 0.5);
@@ -278,8 +287,10 @@ export class SkillSystem {
     const rh = ctx.world.raycastAll(from, dir, dist, 1 | 2 | 4 | 32);
     if (rh && !targetId) end = rh.point;
     else end = from.clone().addScaledVector(dir, dist);
-    ctx.fx.bolt(from, end, '#c8a8ff', 0.2, 0.28);
-    ctx.lights.flash(end, '#c0a0ff', 40, 14, 0.15);
+    ctx.fx.bolt(from, end, '#d8c0ff', 0.22, 0.45);
+    ctx.fx.flare(end, '#d0b8ff', 2.4, 0.18);
+    ctx.particles.emit({ pos: end, count: 14, spread: 6, life: [0.15, 0.35], size: [0.35, 0.04], color: '#f4ecff' });
+    ctx.lights.flash(end, '#c0a0ff', 60, 16, 0.18);
     if (rh) ctx.props?.directHit(rh, null, 'lightning');
     ctx.world.applyHit({ element: 'lightning', pos: end, radius: 1.1, damage: 13, source: 'player', kind: 'bolt', targetId });
     // chain to nearby enemies
@@ -351,6 +362,11 @@ export class SkillSystem {
         ctx.fx.rune(point.clone().setY(point.y + 0.1), new THREE.Vector3(0, 1, 0), '#9fe8ff', 3 * L.radius, 0.7);
         this.later(0.15, () => {
           ctx.props.spawnIcePillar(point, onWater, [1, 1.4, 1.85][level - 1]);
+          ctx.fx.flare(point.clone().setY(point.y + 2), '#cff4ff', 5 + level * 2, 0.3);
+          if (!onWater) {
+            ctx.fx.spikes(point, 2.5 + level * 1.2, 6 + level * 4);
+            ctx.fx.decal(point, '#9fe0ff', 4 + level * 2.5, 9, true);
+          }
           if (level >= 2) {
             // frost nova around the pillar
             const r = 3.2 * L.radius;
@@ -390,11 +406,23 @@ export class SkillSystem {
         })] : [point];
         strikes.forEach((pt, i) => this.later(0.55 + i * 0.12, () => {
           const main = i === 0;
-          ctx.fx.bolt(pt.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, 60, (Math.random() - 0.5) * 6)), pt, '#e0d0ff', 0.35, main ? 1.4 * (0.8 + level * 0.2) : 1);
-          ctx.fx.sphere(pt, '#b58cff', main ? r : r * 0.5, 0.3);
-          ctx.fx.ring(pt, '#d0b8ff', main ? r * 1.45 : r * 0.7, 0.45);
-          ctx.lights.flash(pt.clone().setY(pt.y + 4), '#d8c8ff', 250, 40, 0.3);
-          ctx.cam.shake(main ? 0.4 + level * 0.15 : 0.3);
+          const sky = pt.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, 60, (Math.random() - 0.5) * 6));
+          ctx.fx.bolt(sky, pt, '#e8dcff', 0.4, main ? 1.5 * (0.8 + level * 0.2) : 1.1);
+          ctx.fx.bolt(sky.clone().add(new THREE.Vector3(3, 0, -2)), pt, '#b58cff', 0.3, main ? 1.2 : 0.8);
+          ctx.fx.flare(pt.clone().setY(pt.y + 1.2), '#c8b0ff', main ? r * 2.2 : r * 1.2, 0.28);
+          ctx.fx.dome(pt, '#b58cff', main ? r : r * 0.55, 0.35);
+          ctx.fx.ring(pt, '#d0b8ff', main ? r * 1.45 : r * 0.7, 0.5);
+          ctx.fx.decal(pt, '#1a1024', main ? r * 1.2 : r * 0.6, 10);
+          // ground arcs crawling outward from the strike
+          for (let k = 0; k < (main ? 6 : 3); k++) {
+            const a = Math.random() * Math.PI * 2;
+            const end = pt.clone().add(new THREE.Vector3(Math.cos(a) * r * 1.1, 0, Math.sin(a) * r * 1.1));
+            end.y = ctx.terrain.heightAt(end.x, end.z) + 0.2;
+            ctx.fx.bolt(pt.clone().setY(pt.y + 0.3), end, '#c9a8ff', 0.25, 0.25, false);
+          }
+          ctx.lights.flash(pt.clone().setY(pt.y + 4), '#d8c8ff', 320, 46, 0.35);
+          ctx.cam.shake(main ? 0.5 + level * 0.18 : 0.3);
+          if (main) ctx.world.hitstop(0.06);
           events.emit('sound', { name: 'thunder', pos: pt, volume: 0.9 });
           ctx.particles.emit({ pos: pt, count: 30 + level * 15, spread: 7, gravity: 6, life: [0.2, 0.6], size: [0.5, 0.05], color: '#efe0ff' });
           ctx.world.applyHit({ element: 'lightning', pos: pt, radius: main ? r : r * 0.55, damage: (main ? 42 : 24) * L.damage, source: 'player', kind: 'strike', push: 6, potency: level });
@@ -424,7 +452,7 @@ export class SkillSystem {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.1;
       const d = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
       const sp = r * (2.2 + Math.random());
-      ctx.particles.emit({ pos: base.clone().addScaledVector(d, 0.8).setY(base.y + 0.3 + Math.random() * 1.6), vel: d.multiplyScalar(sp).setY(0.5 + Math.random()), spread: 0.4, life: [0.35, 0.6], size: [0.55, 1.3], alpha: [0.85, 0], color: '#f2fffa', color2: '#8ff5d0', drag: 2.2 });
+      ctx.particles.emit({ pos: base.clone().addScaledVector(d, 1.2).setY(base.y + 0.3 + Math.random() * 1.6), vel: d.multiplyScalar(sp).setY(0.5 + Math.random()), spread: 0.4, life: [0.35, 0.6], size: [0.45, 1.1], alpha: [0.7, 0], color: '#f2fffa', color2: '#8ff5d0', drag: 2.2 });
     }
     // kicked-up dust and leaves
     for (let i = 0; i < 24 + level * 12; i++) {
@@ -474,9 +502,13 @@ export class SkillSystem {
         break;
       case 'ice':
         this.later(0.5, () => {
-          ctx.fx.sphere(base, '#9fe8ff', 11, 0.6);
+          ctx.fx.dome(base, '#9fe8ff', 11, 0.6);
           ctx.fx.ring(base, '#dff8ff', 13, 0.8);
-          ctx.cam.shake(0.5);
+          ctx.fx.spikes(base, 11, 28);
+          ctx.fx.decal(base, '#9fe0ff', 22, 12, true);
+          ctx.fx.flare(base.clone().setY(base.y + 2), '#dff8ff', 22, 0.4);
+          ctx.world.hitstop(0.08);
+          ctx.cam.shake(0.7);
           ctx.world.applyHit({ element: 'ice', pos: base, radius: 11, damage: 26, source: 'player', kind: 'burst', potency: 3 });
           ctx.enemies?.freezeNear(base, 11, 5);
           ctx.props.freezeWater(base, 12);
@@ -501,7 +533,10 @@ export class SkillSystem {
               pt = base.clone().add(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
               pt.y = ctx.terrain.heightAt(pt.x, pt.z);
             }
-            ctx.fx.bolt(pt.clone().add(new THREE.Vector3(0, 55, 0)), pt, '#e8d8ff', 0.3, 1.2);
+            ctx.fx.bolt(pt.clone().add(new THREE.Vector3(0, 55, 0)), pt, '#e8d8ff', 0.35, 2.0);
+            ctx.fx.flare(pt.clone().setY(pt.y + 1), '#e0d0ff', 9, 0.3);
+            ctx.fx.dome(pt, '#b58cff', 3.2, 0.35);
+            ctx.fx.decal(pt, '#1a1024', 4, 10);
             ctx.lights.flash(pt.clone().setY(pt.y + 4), '#d8c8ff', 200, 36, 0.25);
             ctx.cam.shake(0.35);
             events.emit('sound', { name: 'thunder', pos: pt, volume: 0.7 });
@@ -517,7 +552,9 @@ export class SkillSystem {
           ctx.props.pull(center, 14, 16);
           ctx.enemies?.pull(center, 14, 12);
           this.later(1.1, () => {
-            ctx.fx.sphere(center, '#ffb0ec', 9, 0.4);
+            ctx.fx.dome(center.clone().setY(ctx.terrain.heightAt(center.x, center.z)), '#ff7ad9', 10, 0.5);
+            ctx.fx.flare(center, '#ffb0ec', 18, 0.35);
+            ctx.world.hitstop(0.08);
             ctx.fx.ring(center.clone().setY(ctx.terrain.heightAt(center.x, center.z)), '#ff7ad9', 12, 0.5);
             ctx.cam.shake(0.6);
             ctx.world.applyHit({ element: 'kinesis', pos: center, radius: 7, damage: 34, push: 14, source: 'player', kind: 'burst' });

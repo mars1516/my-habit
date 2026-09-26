@@ -270,6 +270,46 @@ export class Effects {
     }, () => mat.dispose());
   }
 
+  /** A fading ribbon along a path (gusts, sword-like arcs). */
+  trail(pts: THREE.Vector3[], color: THREE.ColorRepresentation, width: number, life = 0.4) {
+    const rib = this.ribbon(pts, width, new THREE.Color(color).multiplyScalar(1.4), 0.8);
+    const mat = rib.material as THREE.MeshBasicMaterial;
+    this.add(rib, life, (k) => {
+      mat.opacity = 0.8 * (1 - k);
+    }, () => {
+      rib.geometry.dispose();
+      mat.dispose();
+    });
+  }
+
+  /** Crystal spikes bursting out of the ground and melting away (ice impacts). */
+  spikes(pos: THREE.Vector3, radius: number, count = 8, color: THREE.ColorRepresentation = '#bfefff') {
+    const mat = new THREE.MeshStandardMaterial({ color, emissive: '#3aa8e0', emissiveIntensity: 0.6, roughness: 0.15, transparent: true, opacity: 0.92, flatShading: true });
+    const g = new THREE.Group();
+    g.position.copy(pos);
+    const geo = new THREE.ConeGeometry(1, 1, 5).translate(0, 0.5, 0);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      const d = radius * (0.25 + Math.random() * 0.75);
+      const m = new THREE.Mesh(geo, mat);
+      m.position.set(Math.cos(a) * d, -0.2, Math.sin(a) * d);
+      const h = (0.8 + Math.random() * 1.4) * (1.2 - d / radius * 0.6) * Math.max(1, radius * 0.35);
+      m.scale.set(0.22 * h, h, 0.22 * h);
+      m.rotation.set(Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5);
+      m.castShadow = true;
+      g.add(m);
+    }
+    this.add(g, 1.6, (k) => {
+      const grow = Math.min(1, k / 0.08);
+      const melt = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
+      g.scale.set(1, grow * melt, 1);
+      mat.opacity = 0.92 * melt;
+    }, () => {
+      geo.dispose();
+      mat.dispose();
+    });
+  }
+
   /** Rising spiral ribbons of wind around a point. */
   windSwirl(pos: THREE.Vector3, radius: number, level = 1) {
     const arms = 3 + level;
@@ -279,18 +319,18 @@ export class Effects {
       for (let i = 0; i <= 26; i++) {
         const t = i / 26;
         const ang = phase + t * Math.PI * 1.6;
-        const r = 1.2 + t * radius * 0.55;
-        pts.push(new THREE.Vector3(Math.cos(ang) * r, 0.3 + t * (2 + level), Math.sin(ang) * r));
+        const r = 1.0 + t * Math.min(radius * 0.3, 4.5);
+        pts.push(new THREE.Vector3(Math.cos(ang) * r, 0.2 + t * (2.2 + level * 0.8), Math.sin(ang) * r));
       }
-      const rib = this.ribbon(pts, 0.35 + level * 0.1, new THREE.Color('#dffff2').multiplyScalar(1.3), 0.7);
+      const rib = this.ribbon(pts, 0.14 + level * 0.04, new THREE.Color('#dffff2').multiplyScalar(1.3), 0.55);
       const g = new THREE.Group();
       g.add(rib);
       g.position.copy(pos);
       const mat = rib.material as THREE.MeshBasicMaterial;
       this.add(g, 0.7, (k, dt) => {
-        g.rotation.y += dt * 5;
-        g.scale.setScalar(0.5 + k * 1.1);
-        mat.opacity = 0.7 * (1 - k);
+        g.rotation.y += dt * 6;
+        g.scale.setScalar(0.6 + k * 0.7);
+        mat.opacity = 0.55 * (1 - k);
       }, () => {
         rib.geometry.dispose();
         mat.dispose();

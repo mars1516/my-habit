@@ -390,7 +390,7 @@ export class Vegetation {
       if (Math.random() < 0.3) ctx.particles.emit({ pos, posSpread: 1.2, vel: new THREE.Vector3(0, 4, 0), spread: 1.5, life: [0.8, 1.5], size: [0.12, 0.03], color: '#ffd070', gravity: -0.5 });
       if (Math.random() < 0.15)
         ctx.particles.emit({ pos, posSpread: 1, vel: new THREE.Vector3(0, 3, 0), spread: 0.8, life: [1.5, 2.5], size: [1.5, 3.5], alpha: [0.35, 0], color: '#3a3430', additive: false, drag: 0.8 });
-      if (Math.random() < dt * 1.2) ctx.fire.igniteCircle(t.x, t.z, 3, 1.2);
+      if (Math.random() < dt * 1.2) ctx.fire.igniteCircle(t.x, t.z, 2.5, 0.8, (t.fireGen ?? 0) + 1);
       if ((t.fireGen ?? 0) < 2 && Math.random() < dt * 0.25) {
         for (const o of this.near(t.x, t.z, 4.5)) if (o !== t && !ctx.weather?.raining && Math.random() < 0.5) this.ignite(o, (t.fireGen ?? 0) + 1);
       }

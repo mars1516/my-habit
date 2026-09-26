@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cloudUniforms, CLOUD_GLSL } from '../fx/CloudShadow';
 import { physics, RAPIER, G, groups, ALL } from '../core/Physics';
 import { clamp, lerp, smoothstep } from '../core/math';
 import {
@@ -266,7 +267,7 @@ export class Terrain {
       uWorld: { value: WORLD_SIZE },
     };
     mat.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
+      Object.assign(shader.uniforms, uniforms, cloudUniforms);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNormal;')
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed,1.0)).xyz;\nvWNormal = normalize(mat3(modelMatrix) * objectNormal);');
@@ -276,6 +277,7 @@ export class Terrain {
           `#include <common>
           varying vec3 vWPos;
           varying vec3 vWNormal;
+          ${CLOUD_GLSL}
           uniform sampler2D uMask;
           uniform float uWorld;
           float th(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -297,6 +299,7 @@ export class Terrain {
           vec3 rock = diffuseColor.rgb * (0.78 + 0.28 * floor(layer * 3.0) / 3.0);
           rock *= 0.62 + 0.38 * seam;
           diffuseColor.rgb = mix(diffuseColor.rgb, rock, steep);
+          diffuseColor.rgb *= cloudShade(vWPos.xz);
           float burnt = mask.g;
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.13,0.11,0.1) + n*0.05, burnt*0.85);
           diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb*vec3(0.75,0.8,0.9), mask.b*0.5);`,

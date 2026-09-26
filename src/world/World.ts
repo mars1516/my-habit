@@ -51,6 +51,12 @@ export class World {
     return waterLevelAt(p.x, p.z) - ctx.terrain.heightAt(p.x, p.z) > depth && p.y <= waterLevelAt(p.x, p.z) + 0.6;
   }
 
+  /** Remaining hit-stop (brief freeze on heavy impacts). */
+  hitstopT = 0;
+  hitstop(t: number) {
+    this.hitstopT = Math.max(this.hitstopT, t);
+  }
+
   addUpdraft(pos: THREE.Vector3, r: number, h: number, strength: number, t: number) {
     this.updrafts.push({ pos: pos.clone(), r, h, strength, t });
   }

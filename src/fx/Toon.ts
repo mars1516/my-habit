@@ -9,7 +9,7 @@ import * as THREE from 'three';
  */
 const BAND = `
 	#ifdef TOON
-	dotNL = mix( smoothstep( 0.0, 0.05, dotNL ) * 0.6, 1.0, smoothstep( 0.3, 0.42, dotNL ) );
+	dotNL = mix( smoothstep( 0.0, 0.08, dotNL ) * 0.7, 1.0, smoothstep( 0.28, 0.45, dotNL ) );
 	#endif
 `;
 const DOT = 'float dotNL = saturate( dot( geometryNormal, directLight.direction ) );';

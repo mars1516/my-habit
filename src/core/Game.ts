@@ -32,6 +32,7 @@ import { AudioSys } from '../audio/Audio';
 import { UI } from '../ui/UI';
 import { culler } from './Culler';
 import { Ambient } from '../fx/Ambient';
+import { updateCloudShadows } from '../fx/CloudShadow';
 
 /** Final colour grade (display space): a touch more saturation, warm highlights, soft vignette. */
 const GRADE = {
@@ -193,8 +194,14 @@ export class Game {
     ctx.input.endFrame();
   };
 
-  tick(dt: number) {
+  tick(realDt: number) {
     const playing = this.mode === 'playing';
+    let dt = realDt;
+    // hit-stop: the world nearly freezes for a few frames on heavy impacts
+    if (playing && ctx.world.hitstopT > 0) {
+      ctx.world.hitstopT -= realDt;
+      dt = realDt * 0.06;
+    }
     if (playing) {
       ctx.time += dt;
       ctx.player.update(dt);
@@ -220,20 +227,21 @@ export class Game {
       ctx.player.char.update(dt);
     } else {
       const aiming = playing && ctx.input.isDown('Mouse2');
-      ctx.cam.update(playing ? dt : 0, ctx.player.pos, aiming);
+      ctx.cam.update(playing ? realDt : 0, ctx.player.pos, aiming);
     }
     ctx.sky.update(dt, this.mode === 'title' ? this.camera.position : ctx.player.pos, this.camera, playing || this.mode === 'title' ? 1 : 0);
     this.renderer.toneMappingExposure = 1 + ctx.sky.night * 0.25;
     if (this.grade) this.grade.uniforms.uNight.value = ctx.sky.night;
     ctx.water.update(dt, ctx.sky, this.camera);
+    updateCloudShadows(dt, ctx.wind, 1 - ctx.sky.night, ctx.sky.overcast);
     ctx.grass.update(dt, this.camera.position, ctx.player.pos, ctx.wind, ctx.sky.night);
     ctx.particles.update(playing || this.mode === 'title' ? dt * (0.35 + ctx.slowmo * 0.65) : 0);
     ctx.lights.update(playing ? dt : 0);
     ctx.fx.update(playing ? dt : 0);
     if (playing) this.ambient?.update(dt, ctx.player.pos);
-    culler.update(dt, this.camera.position);
-    ctx.ui.update(dt);
-    ctx.audio.update(dt);
+    culler.update(realDt, this.camera.position);
+    ctx.ui.update(realDt);
+    ctx.audio.update(realDt);
   }
 
   render() {

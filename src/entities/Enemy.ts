@@ -440,6 +440,11 @@ export class Enemy {
       this.knock.addScaledVector(dir, (hit.push * falloff) / this.scale);
     }
     ctx.skills.addEnergy(r.name ? 6 : 3);
+    if (hit.source === 'player' && dmg >= 20) {
+      // heavy hits land with a brief freeze and a flash
+      ctx.world.hitstop(Math.min(0.09, 0.03 + dmg / 900));
+      ctx.fx.flare(this.chest(), elementColor(hit.element), 2 + Math.min(3, dmg / 25), 0.16);
+    }
     this.damage(dmg, hit.element, true);
     if (this.alive && this.state !== 'attack' && this.state !== 'dormant' && this.state !== 'awaken' && dmg > 8 && this.kind !== 'lord' && this.status.frozen <= 0) {
       this.setState('hurt');

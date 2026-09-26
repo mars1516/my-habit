@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { toon } from '../fx/Toon';
+import { cloudUniforms, CLOUD_GLSL } from '../fx/CloudShadow';
 
 /**
  * Stylised "fluffy" foliage in the Genshin / Breath of the Wild manner: canopies are
@@ -50,15 +51,18 @@ export function foliageMaterial(uTime: { value: number }, sway: number) {
   toon(mat, 0.12);
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = uTime;
+    Object.assign(shader.uniforms, cloudUniforms);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nvarying float vCloud;\n' + CLOUD_GLSL)
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         #ifdef USE_INSTANCING
         float ph = instanceMatrix[3].x*0.21 + instanceMatrix[3].z*0.17;
+        vCloud = cloudShade(instanceMatrix[3].xz);
         #else
         float ph = 0.0;
+        vCloud = 1.0;
         #endif
         float hy = max(position.y, 0.0);
         float flutter = sin(uTime*3.3 + position.x*2.1 + position.z*1.7 + ph) * 0.035;
@@ -68,6 +72,8 @@ export function foliageMaterial(uTime: { value: number }, sway: number) {
       );
     // the bent normals already describe the crown: never flip them for back faces
     shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vCloud;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= vCloud;')
       .replace('normal *= faceDirection;', '')
       // dissolve leaves right in front of the camera instead of filling the screen
       .replace(
@@ -212,8 +218,8 @@ export function oakParts(rng: Rng) {
     { c: new THREE.Vector3(0.6, 5.1, 0.9), r: 1.2 },
   ];
   const centre = new THREE.Vector3(0, 4.4, 0);
-  const leaves = cards(blobs, 44, 0.85, rng, new THREE.Color('#2f6a2a'), new THREE.Color('#a8d65a'), centre, 0);
-  const wood = trunk(3.8, 0.42, 0.24, '#6e4a30', rng, [
+  const leaves = cards(blobs, 44, 0.85, rng, new THREE.Color('#3f7c34'), new THREE.Color('#b4de66'), centre, 0);
+  const wood = trunk(3.8, 0.42, 0.24, '#8a6446', rng, [
     [2.6, 0.4, 1.6, 0.14],
     [2.9, 2.6, 1.4, 0.12],
     [3.2, 4.5, 1.3, 0.1],
@@ -247,7 +253,7 @@ export function pineParts(rng: Rng) {
     const ty = 2.3 + (tier * 6.2) / (tiers - 1);
     p.setY(i, ty + (y - ty) * 0.7);
   }
-  const wood = trunk(8.8, 0.34, 0.1, '#5b3d2a', rng);
+  const wood = trunk(8.8, 0.34, 0.1, '#7a5a40', rng);
   return { leaves, wood };
 }
 

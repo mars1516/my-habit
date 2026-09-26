@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cloudUniforms, CLOUD_GLSL } from '../fx/CloudShadow';
 import type { Terrain } from './Terrain';
 import { WORLD_SIZE, RES } from './WorldGen';
 
@@ -66,7 +67,7 @@ export class Grass {
 
     const mat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
     mat.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, this.uniforms);
+      Object.assign(shader.uniforms, this.uniforms, cloudUniforms);
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -84,7 +85,8 @@ export class Grass {
             float c = texelFetch(uHeight, i+ivec2(0,1), 0).r, d = texelFetch(uHeight, i+ivec2(1,1), 0).r;
             return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
           }
-          float gHash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }`,
+          float gHash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+          ${CLOUD_GLSL}`,
         )
         .replace(
           '#include <beginnormal_vertex>',
@@ -145,7 +147,8 @@ export class Grass {
           // the base melts into the ground colour so blades never read as dark holes
           vGrassCol = mix(ground * 0.97, ground * 1.28 + vec3(0.07,0.08,0.0), t*t) * mix(vec3(1.0), tint, t);
           vGrassCol = mix(vGrassCol, vec3(0.12,0.1,0.08), burnt);
-          vBurn = mask.a * t;`,
+          vBurn = mask.a * t;
+          vGrassCol *= cloudShade(wxz);`,
         );
       shader.vertexShader = shader.vertexShader.replace(
         '#include <shadowmap_vertex>',

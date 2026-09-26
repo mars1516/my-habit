@@ -30,6 +30,21 @@ interface Proj extends ProjectileSpec {
 }
 
 const orbGeo = new THREE.IcosahedronGeometry(1, 1);
+let _glow: THREE.Texture | null = null;
+function glowTex() {
+  if (_glow) return _glow;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.3)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  _glow = new THREE.CanvasTexture(c);
+  return _glow;
+}
 const shardGeo = new THREE.OctahedronGeometry(1, 0).scale(0.45, 0.45, 1.6);
 const arrowGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.9, 4).rotateX(Math.PI / 2);
 
@@ -41,17 +56,29 @@ export class Projectiles {
     const size = spec.size ?? 0.28;
     let mesh: THREE.Object3D;
     if (spec.style === 'shard') {
-      mesh = new THREE.Mesh(shardGeo, new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(2.2), transparent: true, opacity: 0.95 }));
-      mesh.scale.setScalar(size);
+      const g = new THREE.Group();
+      const mat = new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(2.2), transparent: true, opacity: 0.95 });
+      for (let i = 0; i < 3; i++) {
+        const sh = new THREE.Mesh(shardGeo, mat);
+        sh.scale.setScalar(size * (i === 0 ? 1.3 : 0.75));
+        sh.position.set(i === 0 ? 0 : (i === 1 ? 0.18 : -0.18), i === 0 ? 0 : 0.1, i === 0 ? 0 : -0.25);
+        g.add(sh);
+      }
+      mesh = g;
     } else if (spec.style === 'arrow') {
       mesh = new THREE.Mesh(arrowGeo, new THREE.MeshLambertMaterial({ color: '#d8d0b8' }));
     } else {
       const g = new THREE.Group();
-      const core = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffffff').lerp(color, 0.35).multiplyScalar(2.5) }));
-      core.scale.setScalar(size * 0.6);
-      const halo = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(1.6), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false }));
-      halo.scale.setScalar(size * (spec.style === 'big' ? 1.6 : 1.2));
+      const core = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffffff').lerp(color, 0.3).multiplyScalar(2.6) }));
+      core.scale.setScalar(size * 0.75);
+      const halo = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(1.7), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+      halo.scale.setScalar(size * (spec.style === 'big' ? 1.9 : 1.45));
       g.add(core, halo);
+      if (spec.source === 'player') {
+        const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex(), color: color.clone().multiplyScalar(1.5), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        glow.scale.setScalar(size * (spec.style === 'big' ? 7 : 5));
+        g.add(glow);
+      }
       mesh = g;
     }
     mesh.position.copy(spec.from);
@@ -151,21 +178,25 @@ export class Projectiles {
 
   private trail(p: Proj, dt: number) {
     const c = elementColor(p.element);
+    const big = p.style === 'big';
+    const back = p.vel.clone().normalize().multiplyScalar(-2);
     switch (p.element) {
       case 'fire':
-        ctx.particles.emit({ pos: p.pos, count: p.style === 'big' ? 3 : 2, spread: 0.6, posSpread: (p.size ?? 0.3) * 0.8, life: [0.2, 0.45], size: [p.style === 'big' ? 1.1 : 0.6, 0.05], color: '#ffd070', color2: '#ff3a00' });
-        if (Math.random() < 0.3) ctx.particles.emit({ pos: p.pos, count: 1, spread: 0.4, life: [0.5, 0.9], size: [0.5, 1.2], alpha: [0.25, 0], color: '#443a36', additive: false });
+        ctx.particles.emit({ pos: p.pos, count: big ? 4 : 2, vel: back, spread: 0.8, posSpread: (p.size ?? 0.3) * 0.7, life: [0.25, 0.45], size: [big ? 1.8 : 1.0, 0.25], alpha: [1, 0.1], color: '#ffc04a', color2: '#ff3000', shape: 'flame' });
+        ctx.particles.emit({ pos: p.pos, count: 1, spread: 1.5, life: [0.3, 0.6], size: [0.12, 0.03], color: '#ffe080', gravity: -1 });
+        if (Math.random() < (big ? 0.6 : 0.3)) ctx.particles.emit({ pos: p.pos, count: 1, spread: 0.4, life: [0.6, 1.1], size: [big ? 1 : 0.5, big ? 2.4 : 1.2], alpha: [0.28, 0], color: '#443a36', additive: false });
         break;
       case 'ice':
-        ctx.particles.emit({ pos: p.pos, count: 2, spread: 0.4, posSpread: 0.15, life: [0.3, 0.6], size: [0.3, 0.02], color: '#e8fbff', color2: '#6fc8ff' });
+        ctx.particles.emit({ pos: p.pos, count: 3, vel: back, spread: 0.5, posSpread: 0.2, life: [0.3, 0.7], size: [0.4, 0.03], color: '#f4fdff', color2: '#6fc8ff' });
+        if (Math.random() < 0.5) ctx.particles.emit({ pos: p.pos, count: 1, spread: 0.3, life: [0.5, 0.9], size: [0.6, 1.4], alpha: [0.3, 0], color: '#dff6ff', additive: false });
         break;
       case 'lightning':
-        ctx.particles.emit({ pos: p.pos, count: 2, spread: 2, life: [0.1, 0.25], size: [0.35, 0.05], color: '#f0e0ff' });
+        ctx.particles.emit({ pos: p.pos, count: 3, spread: 3, life: [0.1, 0.25], size: [0.4, 0.05], color: '#f0e0ff' });
         break;
       case 'physical':
         break;
       default:
-        ctx.particles.emit({ pos: p.pos, count: 1, spread: 0.5, life: [0.2, 0.4], size: [0.4, 0.05], color: c });
+        ctx.particles.emit({ pos: p.pos, count: 2, vel: back, spread: 0.5, life: [0.2, 0.4], size: [0.5, 0.05], color: c });
     }
     void dt;
   }
@@ -178,24 +209,42 @@ export class Projectiles {
     p.onImpact?.(pos, normal, water);
     const color = elementColor(p.element);
     const big = p.style === 'big';
+    const up = pos.clone().addScaledVector(normal, 0.3);
+    const grounded = normal.y > 0.5 && !water && !air;
     if (p.element === 'fire') {
-      ctx.particles.emit({ pos, count: big ? 60 : 16, spread: big ? 9 : 4, life: [0.3, big ? 0.9 : 0.5], size: [big ? 2.2 : 1, 0.1], color: '#ffe080', color2: '#ff3000', drag: 3 });
-      ctx.particles.emit({ pos, count: big ? 20 : 5, spread: big ? 4 : 1.5, vel: new THREE.Vector3(0, 2, 0), life: [0.8, 1.8], size: [big ? 3 : 1.2, big ? 6 : 2.5], alpha: [0.35, 0], color: '#3a3330', additive: false, drag: 1.5 });
-      ctx.lights.flash(pos.clone().addScaledVector(normal, 0.5), '#ff8a30', big ? 120 : 30, big ? 26 : 12, big ? 0.45 : 0.25);
+      const R = p.hit.radius;
+      ctx.fx.flare(up, '#ffb050', big ? R * 3.2 : 3.2, big ? 0.35 : 0.22);
+      for (let i = 0; i < (big ? 70 : 14); i++) {
+        const d = new THREE.Vector3(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).normalize();
+        ctx.particles.emit({ pos: up, vel: d.multiplyScalar((big ? R * 2.4 : 5) * (0.4 + Math.random() * 0.6)), spread: 0.4, life: [0.3, big ? 0.7 : 0.45], size: [big ? 2.2 : 1.1, 0.4], alpha: [1, 0.1], color: '#ffc04a', color2: '#ff2a00', drag: 3, shape: 'flame' });
+      }
+      ctx.particles.emit({ pos: up, count: big ? 40 : 10, spread: big ? 14 : 6, gravity: 9, life: [0.5, 1.1], size: [0.14, 0.03], color: '#ffe080', color2: '#ff6010' });
+      ctx.particles.emit({ pos: up, count: big ? 22 : 5, spread: big ? 4 : 1.5, vel: new THREE.Vector3(0, big ? 4 : 2, 0), life: [1, 2.2], size: [big ? 3 : 1.2, big ? 7 : 2.8], alpha: [0.35, 0], color: '#3a3330', additive: false, drag: 1.5 });
+      ctx.lights.flash(pos.clone().addScaledVector(normal, 0.8), '#ff8a30', big ? 180 : 40, big ? 34 : 14, big ? 0.5 : 0.25);
+      if (grounded) ctx.fx.decal(pos, '#140c08', big ? R * 1.6 : 1.6, big ? 12 : 6);
+      ctx.fx.ring(pos, '#ffb050', big ? R * 1.6 : 2.2, big ? 0.55 : 0.3);
       if (big) {
-        ctx.fx.sphere(pos, '#ff7a2e', p.hit.radius, 0.35);
-        ctx.fx.ring(pos, '#ffb050', p.hit.radius * 1.4, 0.5);
-        ctx.cam.shake(0.45);
-        events.emit('sound', { name: 'explode', pos, volume: 0.8 });
-      } else events.emit('sound', { name: 'fire_hit', pos, volume: 0.35 });
+        ctx.fx.dome(pos, '#ff8a3a', R * 1.05, 0.4);
+        ctx.fx.ring(pos, '#fff0c0', R * 2.2, 0.8);
+        ctx.cam.shake(0.65);
+        ctx.world.hitstop(0.07);
+        events.emit('sound', { name: 'explode', pos, volume: 0.9 });
+      } else events.emit('sound', { name: 'fire_hit', pos, volume: 0.4 });
     } else if (p.element === 'ice') {
-      ctx.particles.emit({ pos, count: 18, spread: 4, gravity: 12, life: [0.4, 0.8], size: [0.35, 0.05], color: '#f0fcff', color2: '#80d0ff', drag: 1 });
-      ctx.particles.emit({ pos, count: 6, spread: 1, life: [0.6, 1.1], size: [1.2, 2], alpha: [0.35, 0], color: '#d8f4ff', additive: false });
-      events.emit('sound', { name: 'ice_hit', pos, volume: 0.35 });
+      ctx.fx.flare(up, '#bfefff', 2.6, 0.2);
+      ctx.particles.emit({ pos: up, count: 26, spread: 5, gravity: 12, life: [0.4, 0.9], size: [0.4, 0.05], color: '#f0fcff', color2: '#80d0ff', drag: 1 });
+      ctx.particles.emit({ pos: up, count: 8, spread: 1.4, life: [0.7, 1.3], size: [1.4, 2.6], alpha: [0.35, 0], color: '#d8f4ff', additive: false });
+      if (grounded) {
+        ctx.fx.spikes(pos, 1.6, 6);
+        ctx.fx.decal(pos, '#9fe0ff', 2.4, 5, true);
+      }
+      ctx.fx.ring(pos, '#dff6ff', 1.8, 0.3);
+      events.emit('sound', { name: 'ice_hit', pos, volume: 0.4 });
     } else if (p.element === 'physical') {
       ctx.particles.emit({ pos, count: 6, spread: 2, gravity: 9, life: [0.3, 0.5], size: [0.25, 0.05], color: '#d8c8a0', additive: false });
     } else {
-      ctx.particles.emit({ pos, count: 14, spread: 4, life: [0.2, 0.5], size: [0.6, 0.05], color });
+      ctx.fx.flare(up, color, 2.4, 0.2);
+      ctx.particles.emit({ pos, count: 20, spread: 5, life: [0.2, 0.5], size: [0.7, 0.05], color });
     }
   }
 

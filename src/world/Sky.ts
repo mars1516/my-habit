@@ -23,7 +23,9 @@ void main(){
   col = mix(col, uGround, smoothstep(0.0, -0.25, y));
   // sun
   float sd = dot(d, uSunDir);
-  col += uSunColor * (smoothstep(0.9993, 0.9997, sd) * 6.0 + pow(max(sd,0.0), 48.0) * 0.5 + pow(max(sd,0.0), 6.0)*0.12) * (1.0-uOvercast*0.8);
+  col += uSunColor * (smoothstep(0.9993, 0.9997, sd) * 6.0 + pow(max(sd,0.0), 48.0) * 0.6 + pow(max(sd,0.0), 8.0) * 0.28 + pow(max(sd,0.0), 2.0) * 0.08) * (1.0-uOvercast*0.8);
+  // Hyrule-style pale haze band along the horizon
+  col = mix(col, uHorizon * 1.08 + vec3(0.04), exp(-abs(y) * 10.0) * 0.45 * (1.0 - uNight * 0.7));
   // moon
   float md = dot(d, uMoonDir);
   col += vec3(0.85,0.9,1.0) * smoothstep(0.9990, 0.9994, md) * 1.6 * uNight;
@@ -57,8 +59,8 @@ const KEYS: Key[] = [
   { e: -0.15, zenith: '#0e1838', horizon: '#2c3a66', sun: '#a4b8ff', sunI: 0.8, hemiSky: '#5a6aa8', hemiGround: '#28302a', hemiI: 1.1 },
   { e: 0.0, zenith: '#3b4f86', horizon: '#f39a62', sun: '#ff9a55', sunI: 1.0, hemiSky: '#8a8fb0', hemiGround: '#4a4030', hemiI: 0.8 },
   { e: 0.18, zenith: '#4d86d0', horizon: '#ffd2a0', sun: '#ffd9a8', sunI: 2.2, hemiSky: '#a8c8f0', hemiGround: '#5a5a3a', hemiI: 1.0 },
-  { e: 0.45, zenith: '#3f8ee6', horizon: '#bfe4ff', sun: '#fff4e2', sunI: 2.9, hemiSky: '#c4e2ff', hemiGround: '#5c6e3c', hemiI: 1.15 },
-  { e: 1.0, zenith: '#3386e8', horizon: '#c6e8ff', sun: '#fffaf0', sunI: 3.1, hemiSky: '#cae6ff', hemiGround: '#627442', hemiI: 1.2 },
+  { e: 0.45, zenith: '#3f8ee6', horizon: '#cfeaff', sun: '#fff1dc', sunI: 2.7, hemiSky: '#bcd8ff', hemiGround: '#7a8a50', hemiI: 1.5 },
+  { e: 1.0, zenith: '#3386e8', horizon: '#d4eeff', sun: '#fff8ec', sunI: 2.85, hemiSky: '#c2dcff', hemiGround: '#809052', hemiI: 1.55 },
 ];
 
 export class Sky {
@@ -115,6 +117,8 @@ export class Sky {
     s.far = 500;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.06;
+    // soft, airy shadows: shade is cool and readable, never black
+    this.sun.shadow.intensity = 0.72;
     scene.add(this.sun, this.sun.target);
 
     this.hemi = new THREE.HemisphereLight('#cae6ff', '#627442', 1.1);
