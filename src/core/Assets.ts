@@ -26,6 +26,29 @@ const CHARACTERS: CharacterKey[] = [
   'skeleton_mage',
 ];
 
+/**
+ * Fetch a .glb; hosts that refuse binary model types can serve the same bytes as
+ * base64 text next to it (`model.glb.txt`), which is used as a fallback.
+ */
+async function fetchGlb(url: string): Promise<ArrayBuffer> {
+  try {
+    const r = await fetch(url);
+    if (r.ok) {
+      const buf = await r.arrayBuffer();
+      const magic = new Uint8Array(buf, 0, 4);
+      if (magic[0] === 0x67 && magic[1] === 0x6c && magic[2] === 0x54 && magic[3] === 0x46) return buf;
+    }
+  } catch {
+    /* fall through to the text copy */
+  }
+  const r = await fetch(url + '.txt');
+  if (!r.ok) throw new Error(`asset missing: ${url}`);
+  const bin = atob((await r.text()).trim());
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
 export class Assets {
   private chars = new Map<CharacterKey, GLTF>();
   private envRoot = new THREE.Object3D();
@@ -43,13 +66,12 @@ export class Assets {
     ];
     let done = 0;
     const results = await Promise.all(
-      files.map((f) =>
-        loader.loadAsync(base + f).then((g) => {
-          done++;
-          onProgress(done / files.length);
-          return g;
-        }),
-      ),
+      files.map(async (f) => {
+        const g = await loader.parseAsync(await fetchGlb(base + f), '');
+        done++;
+        onProgress(done / files.length);
+        return g;
+      }),
     );
     CHARACTERS.forEach((c, i) => {
       const g = results[i];

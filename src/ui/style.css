@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --gold: #e9c979;
   --gold-dim: #b89a55;
   --ink: #1b1d2a;
@@ -741,7 +742,7 @@ body {
   border: 1px solid rgba(233, 201, 121, 0.45);
   border-radius: 16px;
   padding: 22px 26px;
-  min-width: 360px;
+  min-width: min(360px, 92vw);
   max-width: min(900px, 94vw);
   max-height: 88vh;
   overflow: auto;
@@ -802,6 +803,11 @@ body {
   border-color: var(--gold);
 }
 
+.btn.warn {
+  border-color: #ff8a70;
+  color: #ffd6cc;
+}
+
 .btn.small {
   padding: 6px 14px;
   font-size: 13px;
@@ -853,7 +859,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 320px;
+  width: min(320px, 88vw);
   margin: 0 auto;
 }
 
@@ -886,7 +892,7 @@ body {
   flex-direction: column;
   gap: 12px;
   margin-bottom: 18px;
-  min-width: 420px;
+  min-width: min(420px, 84vw);
 }
 
 .set-row {

@@ -290,10 +290,18 @@ export class UI {
     wrap.append(h('div', 'title-logo', '에테리아'), h('div', 'title-sub', '원소의 손'));
     const menu = h('div', 'title-menu');
     if (hasSave) menu.append(this.button('이어하기', () => this.onStart?.('continue'), 'primary'));
-    menu.append(this.button(hasSave ? '새로운 여정 (처음부터)' : '새로운 여정', () => {
-      if (hasSave && !confirm('저장된 진행 상황이 사라집니다. 새로 시작할까요?')) return;
+    let armed = false;
+    const fresh = this.button(hasSave ? '새로운 여정 (처음부터)' : '새로운 여정', () => {
+      // with a save present, ask for a second click instead of a blocking confirm()
+      if (hasSave && !armed) {
+        armed = true;
+        fresh.innerHTML = '한 번 더 누르면 저장을 지우고 시작';
+        fresh.classList.add('warn');
+        return;
+      }
       this.onStart?.('new');
-    }, hasSave ? '' : 'primary'));
+    }, hasSave ? '' : 'primary');
+    menu.append(fresh);
     menu.append(this.button('자유 모드 · 모든 마법 해금', () => this.onStart?.('free')));
     menu.append(this.button('조작법', () => this.titleHelp()));
     menu.append(this.button('설정', () => this.titleSettings()));

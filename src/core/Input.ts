@@ -14,6 +14,8 @@ export class Input {
   sensitivity = 1;
   invertY = false;
   onLockChange?: (locked: boolean, byUser: boolean) => void;
+  /** Pointer lock refused (sandboxed iframe, browser policy): fall back to free mouse look. */
+  lockUnavailable = false;
   private selfUnlock = false;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -43,7 +45,7 @@ export class Input {
     window.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX;
       this.mouseY = e.clientY;
-      if (this.locked) {
+      if (this.locked || (this.lockUnavailable && this.enabled)) {
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
       }
@@ -55,6 +57,7 @@ export class Input {
       },
       { passive: true },
     );
+    document.addEventListener('pointerlockerror', () => (this.lockUnavailable = true));
     document.addEventListener('pointerlockchange', () => {
       const was = this.locked;
       this.locked = document.pointerLockElement === this.canvas;
@@ -67,8 +70,19 @@ export class Input {
 
   requestLock() {
     if (!this.locked) {
-      const p = this.canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
-      p?.catch?.(() => {});
+      if (!this.canvas.requestPointerLock) {
+        this.lockUnavailable = true;
+        return;
+      }
+      try {
+        const p = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined;
+        p?.catch?.((e: Error) => {
+          // user-gesture errors are transient; anything else means lock is not allowed here
+          if (!/gesture|activation/i.test(String(e?.message ?? e))) this.lockUnavailable = true;
+        });
+      } catch {
+        this.lockUnavailable = true;
+      }
     }
   }
 
