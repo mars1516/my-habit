@@ -1,0 +1,4 @@
+# 모델(대용량, setup.sh 로 내려받음)과 빌드 산출물은 커밋하지 않는다
+models/
+build/
+__pycache__/
